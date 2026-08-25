@@ -5,7 +5,7 @@
 	"info": {
 		"0000": {
 			"ProductVersion": "{{.Info.ProductVersion}}",
-			"CompanyName": "{{.Info.CompanyName}}",
+			"CompanyName": "Melkam Studios",
 			"FileDescription": "{{.Info.ProductName}}",
 			"LegalCopyright": "{{.Info.Copyright}}",
 			"ProductName": "{{.Info.ProductName}}",
