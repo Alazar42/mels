@@ -77,6 +77,13 @@ go test -v ./...
 
 ---
 
+## Privacy
+
+Mels is strictly local-first and privacy-focused: zero analytics, zero telemetry, and zero cloud tracking. Read our full [Privacy Policy](PRIVACY.md).
+
+---
+
 ## License
 
 This project is open-source software licensed under the [MIT License](LICENSE).
+
