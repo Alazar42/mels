@@ -1,7 +1,7 @@
 {
-  "PackageName": "ADWA1888.MelsDesktopClient",
-  "Publisher": "CN=ADWA1888",
+  "PackageName": "ADWA1888.MelsAPIClient",
+  "Publisher": "CN=9FD7140B-27CE-4CA3-9A29-DA48BDE7C2E5",
   "PublisherDisplayName": "ADWA1888",
-  "DisplayName": "Mels Desktop Client",
+  "DisplayName": "Mels API Client",
   "Version": "1.0.0.0"
 }
