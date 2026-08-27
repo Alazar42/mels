@@ -6,7 +6,8 @@ param (
     [string]$DisplayName,
     [string]$Version,
     [string]$OutputDir = "build\bin",
-    [string]$OutputMsix = "build\bin\mels.msix"
+    [string]$OutputMsix = "build\bin\mels.msix",
+    [switch]$ForceRebuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,8 +50,8 @@ Write-Host "Found MakeAppx at: $makeappxPath" -ForegroundColor Green
 
 # 2. Check binary
 $exeSource = "build\bin\mels.exe"
-if (-not (Test-Path $exeSource)) {
-    Write-Host "Binary not found at $exeSource. Building with Wails..." -ForegroundColor Yellow
+if (-not (Test-Path $exeSource) -or $ForceRebuild) {
+    Write-Host "Building binary with Wails..." -ForegroundColor Yellow
     wails build -clean -platform windows/amd64
     if (-not (Test-Path $exeSource)) {
         throw "Failed to build $exeSource with Wails."

@@ -6,7 +6,7 @@
 
   <Identity Name="ADWA1888.MelsAPIClient"
             Publisher="CN=9FD7140B-27CE-4CA3-9A29-DA48BDE7C2E5"
-            Version="1.0.0.0"
+            Version="1.2.0.0"
             ProcessorArchitecture="x64" />
 
   <Properties>

@@ -9,5 +9,12 @@
   "author": {
     "name": "Mickyas Tesfaye",
     "email": "alazartesfaye42@gmail.com"
+  },
+  "info": {
+    "companyName": "ADWA1888",
+    "productName": "Mels API Client",
+    "productVersion": "1.2.0",
+    "copyright": "Copyright 2026",
+    "comments": "Fast, local-first API client"
   }
 }

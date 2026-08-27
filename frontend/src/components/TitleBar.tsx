@@ -226,7 +226,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             <strong>Mels</strong> is a fast, local-first API client built for complete data ownership and privacy. All your requests, collections, and tokens stay securely on your machine.
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
-            Version 1.0.0 &bull; Local Storage &bull; Zero Telemetry
+            Version 1.2.0 &bull; Local Storage &bull; Zero Telemetry
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
