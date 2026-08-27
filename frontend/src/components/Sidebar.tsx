@@ -4,7 +4,6 @@ import {
   Typography,
   IconButton,
   InputBase,
-  Chip,
   Tooltip,
   Collapse,
   Button,
@@ -16,8 +15,6 @@ import {
 } from '@mui/material';
 import {
   Folder,
-  FolderPlus,
-  FilePlus,
   ChevronRight,
   Trash2,
   Clock,
@@ -28,17 +25,22 @@ import {
   Edit2,
   Check,
   X,
-  PlusCircle,
+  FilePlus,
+  FolderPlus,
+  Copy,
 } from 'lucide-react';
 import { Collection, CollectionNode, Environment, HistoryItem, RequestItem } from '../types';
 import { formatDuration } from '../utils/formatters';
 
 interface SidebarProps {
   collections: Collection[];
+  activeRequestId?: string;
   onSelectRequest: (req: RequestItem) => void;
   onAddRequestToCollection: (collectionId: string, folderId?: string) => void;
   onAddFolder: (collectionId: string, parentFolderId?: string) => void;
   onDeleteNode: (collectionId: string, nodeId: string) => void;
+  onRenameNode?: (collectionId: string, nodeId: string, newName: string) => void;
+  onDuplicateRequest?: (collectionId: string, requestId: string) => void;
   onAddCollection: (name: string) => void;
   onDeleteCollection: (collectionId: string) => void;
   onRenameCollection: (collectionId: string, newName: string) => void;
@@ -49,26 +51,30 @@ interface SidebarProps {
   history: HistoryItem[];
   onSelectHistoryItem: (item: HistoryItem) => void;
   onClearHistory: () => void;
-  activeNavTab: 'collections' | 'envs' | 'history';
+  activeNavTab?: 'collections' | 'envs' | 'history';
+  onNavTabChange?: (tab: 'collections' | 'envs' | 'history') => void;
   width?: number;
 }
 
-const METHOD_COLORS: Record<string, { bg: string; color: string }> = {
-  GET: { bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981' },
-  POST: { bg: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' },
-  PUT: { bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' },
-  PATCH: { bg: 'rgba(168, 85, 247, 0.15)', color: '#a855f7' },
-  DELETE: { bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' },
-  OPTIONS: { bg: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4' },
-  HEAD: { bg: 'rgba(100, 116, 139, 0.15)', color: '#64748b' },
+const METHOD_COLORS: Record<string, string> = {
+  GET: '#10b981',
+  POST: '#f59e0b',
+  PUT: '#3b82f6',
+  PATCH: '#a855f7',
+  DELETE: '#ef4444',
+  OPTIONS: '#06b6d4',
+  HEAD: '#64748b',
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({
   collections,
+  activeRequestId,
   onSelectRequest,
   onAddRequestToCollection,
   onAddFolder,
   onDeleteNode,
+  onRenameNode,
+  onDuplicateRequest,
   onAddCollection,
   onDeleteCollection,
   onRenameCollection,
@@ -79,8 +85,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   history,
   onSelectHistoryItem,
   onClearHistory,
-  activeNavTab,
-  width = 260,
+  activeNavTab = 'collections',
+  onNavTabChange,
+  width = 240,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
@@ -88,16 +95,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
     environments[0]?.id || null
   );
 
-  // New Collection Dialog State (replaces alerts/prompts)
+  const activeEnv = environments.find((e) => e.id === activeEnvId);
+
+  // New Collection Dialog State
   const [newCollectionDialogOpen, setNewCollectionDialogOpen] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
 
-  // Editing Collection Name inline
+  // Inline editing state for collections, folders, and requests
   const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
   const [editCollectionName, setEditCollectionName] = useState('');
 
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [editingNodeCollectionId, setEditingNodeCollectionId] = useState<string | null>(null);
+  const [editNodeName, setEditNodeName] = useState('');
+
   const toggleFolder = (folderId: string) => {
-    setOpenFolders((prev) => ({ ...prev, [folderId]: !prev[folderId] }));
+    setOpenFolders((prev) => ({
+      ...prev,
+      [folderId]: prev[folderId] === undefined ? false : !prev[folderId],
+    }));
   };
 
   const handleCreateCollectionSubmit = () => {
@@ -124,11 +140,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setEditingCollectionId(null);
   };
 
+  const startRenameNode = (collectionId: string, node: CollectionNode) => {
+    setEditingNodeCollectionId(collectionId);
+    setEditingNodeId(node.id);
+    setEditNodeName(node.name);
+  };
+
+  const saveRenameNode = (collectionId: string, nodeId: string) => {
+    const trimmed = editNodeName.trim();
+    if (trimmed && onRenameNode) {
+      onRenameNode(collectionId, nodeId, trimmed);
+    }
+    setEditingNodeId(null);
+    setEditingNodeCollectionId(null);
+  };
+
   const handleAddEnv = () => {
     const newEnv: Environment = {
       id: 'env_' + Math.random().toString(36).substring(2, 9),
       name: `Environment ${environments.length + 1}`,
-      variables: [{ key: 'baseUrl', value: 'https://httpbin.org', enabled: true }],
+      variables: [{ key: 'base_url', value: 'https://api.staging.internal', enabled: true }],
     };
     onUpdateEnvironments([...environments, newEnv]);
     setSelectedEnvForEdit(newEnv.id);
@@ -206,49 +237,124 @@ export const Sidebar: React.FC<SidebarProps> = ({
       .map((node) => {
         const isFolder = node.type === 'folder';
         const isOpen = openFolders[node.id] ?? true;
+        const isEditingThisNode = editingNodeId === node.id && editingNodeCollectionId === collectionId;
 
         if (isFolder) {
           return (
             <Box key={node.id} sx={{ pl: depth * 1.5 }}>
               <Box
-                onClick={() => toggleFolder(node.id)}
+                onClick={() => !isEditingThisNode && toggleFolder(node.id)}
                 sx={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   px: 1,
-                  py: 0.6,
-                  borderRadius: 1,
+                  py: 0.5,
+                  borderRadius: '6px',
                   cursor: 'pointer',
-                  '&:hover': { bgcolor: '#161924' },
+                  transition: 'background-color 0.15s',
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
                   '&:hover .folder-actions': { opacity: 1 },
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-                  <ChevronRight
-                    size={13}
-                    style={{
-                      transform: isOpen ? 'rotate(90deg)' : 'none',
-                      transition: 'transform 0.15s ease',
-                      color: '#64748b',
+                {isEditingThisNode ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }} onClick={(e) => e.stopPropagation()}>
+                    <InputBase
+                      autoFocus
+                      value={editNodeName}
+                      onChange={(e) => setEditNodeName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveRenameNode(collectionId, node.id);
+                        if (e.key === 'Escape') setEditingNodeId(null);
+                      }}
+                      sx={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        bgcolor: '#11141c',
+                        px: 0.75,
+                        py: 0.2,
+                        borderRadius: 0.5,
+                        border: 1,
+                        borderColor: '#20c997',
+                        flex: 1,
+                        color: '#f1f5f9',
+                      }}
+                    />
+                    <IconButton size="small" onClick={() => saveRenameNode(collectionId, node.id)} sx={{ p: 0.25 }}>
+                      <Check size={12} color="#10b981" />
+                    </IconButton>
+                    <IconButton size="small" onClick={() => setEditingNodeId(null)} sx={{ p: 0.25 }}>
+                      <X size={12} color="#ef4444" />
+                    </IconButton>
+                  </Box>
+                ) : (
+                  <Box
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      startRenameNode(collectionId, node);
                     }}
-                  />
-                  <Folder size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                  <Typography variant="body2" sx={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {node.name}
-                  </Typography>
-                </Box>
+                    sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, flex: 1 }}
+                  >
+                    <ChevronRight
+                      size={13}
+                      style={{
+                        transform: isOpen ? 'rotate(90deg)' : 'none',
+                        transition: 'transform 0.15s ease',
+                        color: '#64748b',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Folder size={14} style={{ color: '#94a3b8', flexShrink: 0 }} />
+                    <Typography
+                      sx={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: '#cbd5e1',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {node.name}
+                    </Typography>
+                  </Box>
+                )}
 
                 <Box className="folder-actions" sx={{ opacity: 0, display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                  <Tooltip title="New Request in Folder">
+                  <Tooltip title="Add Request">
                     <IconButton
                       size="small"
                       onClick={(e) => {
                         e.stopPropagation();
                         onAddRequestToCollection(collectionId, node.id);
                       }}
+                      sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#20c997' } }}
                     >
                       <FilePlus size={12} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Add Subfolder">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddFolder(collectionId, node.id);
+                      }}
+                      sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#20c997' } }}
+                    >
+                      <FolderPlus size={12} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Rename Folder">
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startRenameNode(collectionId, node);
+                      }}
+                      sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#f1f5f9' } }}
+                    >
+                      <Edit2 size={12} />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Delete Folder">
@@ -258,6 +364,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         e.stopPropagation();
                         onDeleteNode(collectionId, node.id);
                       }}
+                      sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#ef4444' } }}
                     >
                       <Trash2 size={12} />
                     </IconButton>
@@ -269,8 +376,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {node.children && node.children.length > 0 ? (
                   renderNodes(collectionId, node.children, depth + 1)
                 ) : (
-                  <Typography variant="caption" sx={{ pl: (depth + 1) * 1.5 + 2, py: 0.5, color: 'text.disabled', display: 'block', fontSize: 11 }}>
-                    Empty Folder
+                  <Typography variant="caption" sx={{ pl: (depth + 1) * 1.5 + 2, py: 0.25, color: '#475569', display: 'block', fontSize: 11 }}>
+                    Empty
                   </Typography>
                 )}
               </Collapse>
@@ -279,46 +386,125 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }
 
         const req = node.request;
-        const methodStyle = METHOD_COLORS[req?.method || 'GET'] || METHOD_COLORS.GET;
+        const color = METHOD_COLORS[req?.method || 'GET'] || '#10b981';
+        const isActive = activeRequestId ? (activeRequestId === req?.id || activeRequestId === node.id) : false;
 
         return (
           <Box
             key={node.id}
-            onClick={() => req && onSelectRequest(req)}
+            onClick={() => !isEditingThisNode && req && onSelectRequest(req)}
             sx={{
-              pl: depth * 1.5 + 1,
+              pl: depth * 1.5 + 0.5,
               pr: 1,
               py: 0.5,
+              my: 0.2,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              borderRadius: 1,
+              borderRadius: '6px',
               cursor: 'pointer',
-              '&:hover': { bgcolor: '#161924' },
+              bgcolor: isActive ? '#181e29' : 'transparent',
+              border: isActive ? '1px solid #232b3a' : '1px solid transparent',
+              transition: 'all 0.15s ease',
+              '&:hover': {
+                bgcolor: isActive ? '#181e29' : 'rgba(255,255,255,0.04)',
+              },
               '&:hover .req-actions': { opacity: 1 },
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-              {req && (
-                <Chip
-                  label={req.method}
-                  size="small"
+            {isEditingThisNode ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }} onClick={(e) => e.stopPropagation()}>
+                <InputBase
+                  autoFocus
+                  value={editNodeName}
+                  onChange={(e) => setEditNodeName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveRenameNode(collectionId, node.id);
+                    if (e.key === 'Escape') setEditingNodeId(null);
+                  }}
                   sx={{
-                    height: 18,
-                    fontSize: 9,
-                    fontWeight: 700,
-                    fontFamily: 'monospace',
-                    bgcolor: methodStyle.bg,
-                    color: methodStyle.color,
-                    borderRadius: 0.75,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    bgcolor: '#11141c',
+                    px: 0.75,
+                    py: 0.2,
+                    borderRadius: 0.5,
+                    border: 1,
+                    borderColor: '#20c997',
+                    flex: 1,
+                    color: '#f1f5f9',
                   }}
                 />
+                <IconButton size="small" onClick={() => saveRenameNode(collectionId, node.id)} sx={{ p: 0.25 }}>
+                  <Check size={12} color="#10b981" />
+                </IconButton>
+                <IconButton size="small" onClick={() => setEditingNodeId(null)} sx={{ p: 0.25 }}>
+                  <X size={12} color="#ef4444" />
+                </IconButton>
+              </Box>
+            ) : (
+              <Box
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  startRenameNode(collectionId, node);
+                }}
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1 }}
+              >
+                {req && (
+                  <Typography
+                    sx={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      fontFamily: 'monospace',
+                      color: color,
+                      minWidth: 44,
+                    }}
+                  >
+                    {req.method}
+                  </Typography>
+                )}
+                <Typography
+                  sx={{
+                    fontSize: 13,
+                    fontWeight: isActive ? 600 : 400,
+                    color: isActive ? '#ffffff' : '#cbd5e1',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {node.name}
+                </Typography>
+              </Box>
+            )}
+
+            <Box className="req-actions" sx={{ opacity: 0, display: 'flex', alignItems: 'center', gap: 0.25 }}>
+              {onDuplicateRequest && (
+                <Tooltip title="Duplicate Request">
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDuplicateRequest(collectionId, node.id);
+                    }}
+                    sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#20c997' } }}
+                  >
+                    <Copy size={12} />
+                  </IconButton>
+                </Tooltip>
               )}
-              <Typography variant="body2" sx={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {node.name}
-              </Typography>
-            </Box>
-            <Box className="req-actions" sx={{ opacity: 0 }}>
+              <Tooltip title="Rename Request">
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startRenameNode(collectionId, node);
+                  }}
+                  sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#f1f5f9' } }}
+                >
+                  <Edit2 size={12} />
+                </IconButton>
+              </Tooltip>
               <Tooltip title="Delete Request">
                 <IconButton
                   size="small"
@@ -326,6 +512,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     e.stopPropagation();
                     onDeleteNode(collectionId, node.id);
                   }}
+                  sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#ef4444' } }}
                 >
                   <Trash2 size={12} />
                 </IconButton>
@@ -340,210 +527,319 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <Box
       sx={{
         width: width,
-        minWidth: 180,
-        maxWidth: 500,
-        bgcolor: 'background.paper',
+        minWidth: 200,
+        maxWidth: 400,
+        bgcolor: '#0c0f17',
         borderRight: 1,
-        borderColor: 'divider',
+        borderColor: '#1c2230',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
         flexShrink: 0,
+        userSelect: 'none',
       }}
     >
-      {/* Search Bar */}
-      <Box sx={{ p: 1, borderBottom: 1, borderColor: 'divider' }}>
+      {/* Search Bar matching screenshot */}
+      <Box sx={{ p: 1.5, pb: 1 }}>
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
-            bgcolor: '#11131c',
+            bgcolor: '#11141c',
             border: 1,
-            borderColor: 'divider',
-            borderRadius: 1,
-            px: 1,
-            py: 0.3,
+            borderColor: '#1c2230',
+            borderRadius: '8px',
+            px: 1.25,
+            py: 0.5,
           }}
         >
-          <Search size={13} style={{ color: '#64748b', marginRight: 6 }} />
+          <Search size={14} style={{ color: '#64748b', marginRight: 8 }} />
           <InputBase
-            placeholder={
-              activeNavTab === 'collections'
-                ? 'Filter requests...'
-                : activeNavTab === 'envs'
-                ? 'Filter environments...'
-                : 'Filter history...'
-            }
+            placeholder="Search requests"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            sx={{ fontSize: 12, flex: 1 }}
+            sx={{
+              fontSize: 12,
+              flex: 1,
+              color: '#f1f5f9',
+              '& input::placeholder': { color: '#64748b', opacity: 1 },
+            }}
           />
         </Box>
       </Box>
 
+      {/* View Selector / COLLECTIONS Header */}
+      {activeNavTab === 'collections' && (
+        <Box
+          sx={{
+            px: 1.75,
+            py: 0.75,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#64748b',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+            }}
+          >
+            COLLECTIONS
+          </Typography>
+          <Tooltip title="New Collection">
+            <IconButton
+              size="small"
+              onClick={() => setNewCollectionDialogOpen(true)}
+              sx={{ p: 0.5, color: '#64748b', '&:hover': { color: '#f1f5f9' } }}
+            >
+              <Plus size={14} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
+
+      {activeNavTab === 'envs' && (
+        <Box
+          sx={{
+            px: 1.75,
+            py: 0.75,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#64748b',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+            }}
+          >
+            ENVIRONMENTS
+          </Typography>
+          <Tooltip title="New Environment">
+            <IconButton
+              size="small"
+              onClick={handleAddEnv}
+              sx={{ p: 0.5, color: '#64748b', '&:hover': { color: '#f1f5f9' } }}
+            >
+              <Plus size={14} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
+
+      {activeNavTab === 'history' && (
+        <Box
+          sx={{
+            px: 1.75,
+            py: 0.75,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#64748b',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+            }}
+          >
+            HISTORY
+          </Typography>
+          {history.length > 0 && (
+            <Button
+              size="small"
+              onClick={onClearHistory}
+              sx={{ fontSize: 10, color: '#ef4444', p: 0, minWidth: 0 }}
+            >
+              Clear
+            </Button>
+          )}
+        </Box>
+      )}
+
       {/* Main List */}
-      <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 1, py: 0.5 }}>
         {/* COLLECTIONS VIEW */}
         {activeNavTab === 'collections' && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {/* Postman-like + New Collection Button */}
-            <Button
-              variant="outlined"
-              size="small"
-              fullWidth
-              startIcon={<Plus size={14} />}
-              onClick={() => setNewCollectionDialogOpen(true)}
-              sx={{
-                justifyContent: 'flex-start',
-                py: 0.75,
-                borderColor: 'divider',
-                color: 'text.primary',
-                bgcolor: '#11131c',
-                '&:hover': { bgcolor: '#161924', borderColor: 'primary.main' },
-              }}
-            >
-              New Collection
-            </Button>
-
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             {collections.length === 0 ? (
-              <Box sx={{ p: 3, textAlign: 'center', color: 'text.disabled' }}>
-                <Boxes size={28} style={{ margin: '0 auto 8px', color: '#2b3040' }} />
-                <Typography variant="body2" sx={{ fontSize: 12, color: 'text.secondary', mb: 0.5 }}>
-                  No Collections
+              <Box sx={{ p: 3, textAlign: 'center', color: '#475569' }}>
+                <Boxes size={24} style={{ margin: '0 auto 8px', color: '#334155' }} />
+                <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
+                  No collections yet
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block' }}>
-                  Click <strong>New Collection</strong> above to organize your requests.
-                </Typography>
+                <Button
+                  size="small"
+                  startIcon={<Plus size={13} />}
+                  onClick={() => setNewCollectionDialogOpen(true)}
+                  sx={{ mt: 1, fontSize: 11, textTransform: 'none' }}
+                >
+                  Create Collection
+                </Button>
               </Box>
             ) : (
-              collections.map((col) => (
-                <Box
-                  key={col.id}
-                  sx={{
-                    bgcolor: '#10121a',
-                    border: 1,
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    overflow: 'hidden',
-                  }}
-                >
-                  {/* Collection Header */}
-                  <Box
-                    sx={{
-                      px: 1.25,
-                      py: 0.75,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      borderBottom: 1,
-                      borderColor: 'divider',
-                      bgcolor: '#131620',
-                      '&:hover .col-actions': { opacity: 1 },
-                    }}
-                  >
-                    {editingCollectionId === col.id ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1, mr: 1 }}>
-                        <InputBase
-                          autoFocus
-                          value={editCollectionName}
-                          onChange={(e) => setEditCollectionName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') saveRenameCollection(col.id);
-                            if (e.key === 'Escape') setEditingCollectionId(null);
-                          }}
-                          sx={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            bgcolor: '#0a0c10',
-                            px: 0.75,
-                            py: 0.2,
-                            borderRadius: 0.5,
-                            border: 1,
-                            borderColor: 'primary.main',
-                            flex: 1,
-                          }}
-                        />
-                        <IconButton size="small" onClick={() => saveRenameCollection(col.id)}>
-                          <Check size={12} color="#10b981" />
-                        </IconButton>
-                        <IconButton size="small" onClick={() => setEditingCollectionId(null)}>
-                          <X size={12} color="#ef4444" />
-                        </IconButton>
-                      </Box>
-                    ) : (
-                      <Box
-                        onDoubleClick={() => startRenameCollection(col)}
-                        sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flex: 1, minWidth: 0, cursor: 'pointer' }}
-                      >
-                        <Boxes size={13} style={{ color: '#818cf8', flexShrink: 0 }} />
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            fontWeight: 700,
-                            fontSize: 11,
-                            textTransform: 'uppercase',
-                            letterSpacing: 0.5,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {col.name}
-                        </Typography>
-                      </Box>
-                    )}
+              collections.map((col) => {
+                const isOpen = openFolders[col.id] ?? true;
 
-                    <Box className="col-actions" sx={{ display: 'flex', alignItems: 'center', gap: 0.25, opacity: 0.7 }}>
-                      <Tooltip title="Add Request">
-                        <IconButton
-                          size="small"
-                          onClick={() => onAddRequestToCollection(col.id)}
+                return (
+                  <Box key={col.id} sx={{ mb: 0.5 }}>
+                    {/* Collection Header matching screenshot tree */}
+                    <Box
+                      onClick={() => editingCollectionId !== col.id && toggleFolder(col.id)}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        px: 0.75,
+                        py: 0.5,
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.15s',
+                        '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
+                        '&:hover .col-actions': { opacity: 1 },
+                      }}
+                    >
+                      {editingCollectionId === col.id ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }} onClick={(e) => e.stopPropagation()}>
+                          <InputBase
+                            autoFocus
+                            value={editCollectionName}
+                            onChange={(e) => setEditCollectionName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveRenameCollection(col.id);
+                              if (e.key === 'Escape') setEditingCollectionId(null);
+                            }}
+                            sx={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              bgcolor: '#11141c',
+                              px: 0.75,
+                              py: 0.2,
+                              borderRadius: 0.5,
+                              border: 1,
+                              borderColor: '#20c997',
+                              flex: 1,
+                              color: '#f1f5f9',
+                            }}
+                          />
+                          <IconButton size="small" onClick={() => saveRenameCollection(col.id)}>
+                            <Check size={12} color="#10b981" />
+                          </IconButton>
+                          <IconButton size="small" onClick={() => setEditingCollectionId(null)}>
+                            <X size={12} color="#ef4444" />
+                          </IconButton>
+                        </Box>
+                      ) : (
+                        <Box
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            startRenameCollection(col);
+                          }}
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flex: 1, minWidth: 0 }}
                         >
-                          <FilePlus size={13} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Add Folder">
-                        <IconButton
-                          size="small"
-                          onClick={() => onAddFolder(col.id)}
-                        >
-                          <FolderPlus size={13} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Rename Collection">
-                        <IconButton
-                          size="small"
-                          onClick={() => startRenameCollection(col)}
-                        >
-                          <Edit2 size={12} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete Collection">
-                        <IconButton
-                          size="small"
-                          onClick={() => onDeleteCollection(col.id)}
-                          sx={{ '&:hover': { color: 'error.main' } }}
-                        >
-                          <Trash2 size={13} />
-                        </IconButton>
-                      </Tooltip>
+                          <ChevronRight
+                            size={13}
+                            style={{
+                              transform: isOpen ? 'rotate(90deg)' : 'none',
+                              transition: 'transform 0.15s ease',
+                              color: '#64748b',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <Folder size={14} style={{ color: '#94a3b8', flexShrink: 0 }} />
+                          <Typography
+                            sx={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: '#e2e8f0',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {col.name}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      <Box className="col-actions" sx={{ opacity: 0, display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                        <Tooltip title="Add Request">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAddRequestToCollection(col.id);
+                            }}
+                            sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#20c997' } }}
+                          >
+                            <FilePlus size={12} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Add Folder">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAddFolder(col.id);
+                            }}
+                            sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#20c997' } }}
+                          >
+                            <FolderPlus size={12} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Rename Collection">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startRenameCollection(col);
+                            }}
+                            sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#f1f5f9' } }}
+                          >
+                            <Edit2 size={12} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Collection">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteCollection(col.id);
+                            }}
+                            sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#ef4444' } }}
+                          >
+                            <Trash2 size={12} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     </Box>
-                  </Box>
 
-                  {/* Collection Items */}
-                  <Box sx={{ p: 0.5 }}>
-                    {col.items && col.items.length > 0 ? (
-                      renderNodes(col.id, col.items)
-                    ) : (
-                      <Box sx={{ p: 1.5, textAlign: 'center' }}>
-                        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 11 }}>
-                          No requests in this collection
-                        </Typography>
+                    {/* Collection Items */}
+                    <Collapse in={isOpen}>
+                      <Box sx={{ pl: 0.5 }}>
+                        {col.items && col.items.length > 0 ? (
+                          renderNodes(col.id, col.items, 1)
+                        ) : (
+                          <Typography variant="caption" sx={{ pl: 3, py: 0.25, color: '#475569', display: 'block', fontSize: 11 }}>
+                            Empty
+                          </Typography>
+                        )}
                       </Box>
-                    )}
+                    </Collapse>
                   </Box>
-                </Box>
-              ))
+                );
+              })
             )}
           </Box>
         )}
@@ -551,24 +847,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* ENVIRONMENTS VIEW */}
         {activeNavTab === 'envs' && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Button
-              variant="outlined"
-              size="small"
-              fullWidth
-              startIcon={<Plus size={14} />}
-              onClick={handleAddEnv}
-              sx={{
-                justifyContent: 'flex-start',
-                py: 0.75,
-                borderColor: 'divider',
-                color: 'text.primary',
-                bgcolor: '#11131c',
-                '&:hover': { bgcolor: '#161924', borderColor: 'primary.main' },
-              }}
-            >
-              New Environment
-            </Button>
-
             {environments.map((env) => {
               const isActive = activeEnvId === env.id;
               const isSelected = selectedEnvForEdit === env.id;
@@ -577,10 +855,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Box
                   key={env.id}
                   sx={{
-                    bgcolor: isSelected ? '#161924' : '#10121a',
+                    bgcolor: isSelected ? '#161c28' : '#11141c',
                     border: 1,
-                    borderColor: isSelected ? 'primary.main' : 'divider',
-                    borderRadius: 1,
+                    borderColor: isSelected ? '#20c997' : '#1c2230',
+                    borderRadius: '8px',
                     p: 1.25,
                     cursor: 'pointer',
                   }}
@@ -590,20 +868,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <InputBase
                       value={env.name}
                       onChange={(e) => handleEnvNameChange(env.id, e.target.value)}
-                      sx={{ fontSize: 12, fontWeight: 700 }}
+                      sx={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9' }}
                     />
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       <Button
                         size="small"
                         variant={isActive ? 'contained' : 'outlined'}
-                        color={isActive ? 'success' : 'inherit'}
                         onClick={(e) => {
                           e.stopPropagation();
                           onSelectEnv(isActive ? null : env.id);
                         }}
-                        sx={{ fontSize: 10, py: 0.2, px: 1, minWidth: 0, height: 22 }}
+                        sx={{
+                          fontSize: 10,
+                          py: 0.2,
+                          px: 1,
+                          height: 22,
+                          textTransform: 'none',
+                          bgcolor: isActive ? '#20c997' : 'transparent',
+                          color: isActive ? '#000000' : '#20c997',
+                          borderColor: '#20c997',
+                          '&:hover': {
+                            bgcolor: isActive ? '#1baa80' : 'rgba(32, 201, 151, 0.1)',
+                          },
+                        }}
                       >
-                        {isActive ? 'Active' : 'Activate'}
+                        {isActive ? 'Active' : 'Set Active'}
                       </Button>
                       <IconButton
                         size="small"
@@ -611,63 +900,82 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           e.stopPropagation();
                           handleDeleteEnv(env.id);
                         }}
+                        sx={{ p: 0.25, color: '#64748b', '&:hover': { color: '#ef4444' } }}
                       >
                         <Trash2 size={12} />
                       </IconButton>
                     </Box>
                   </Box>
 
-                  {/* Variables */}
-                  <Collapse in={isSelected}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                          Variables ({env.variables?.length || 0})
+                  {/* Variables for selected environment */}
+                  {isSelected && (
+                    <Box sx={{ mt: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
+                        <Typography sx={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>
+                          Variables
                         </Typography>
-                        <IconButton size="small" onClick={() => handleAddVariable(env.id)}>
-                          <Plus size={12} />
-                        </IconButton>
+                        <Button
+                          size="small"
+                          startIcon={<Plus size={10} />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddVariable(env.id);
+                          }}
+                          sx={{ fontSize: 10, py: 0, px: 0.75, minWidth: 0, textTransform: 'none', color: '#20c997' }}
+                        >
+                          Add Var
+                        </Button>
                       </Box>
-
-                      {(env.variables || []).map((v, idx) => (
-                        <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      {env.variables.map((v, vIdx) => (
+                        <Box key={vIdx} sx={{ display: 'flex', gap: 0.5, mb: 0.5, alignItems: 'center' }}>
                           <InputBase
-                            placeholder="Key"
+                            placeholder="Key (e.g. token)"
                             value={v.key}
-                            onChange={(e) => handleUpdateVariable(env.id, idx, 'key', e.target.value)}
+                            onChange={(e) => handleUpdateVariable(env.id, vIdx, 'key', e.target.value)}
                             sx={{
                               fontSize: 11,
                               fontFamily: 'monospace',
-                              bgcolor: '#0c0e14',
+                              bgcolor: '#0c0f17',
                               px: 0.75,
+                              py: 0.2,
                               borderRadius: 0.5,
                               border: 1,
-                              borderColor: 'divider',
+                              borderColor: '#1c2230',
                               flex: 1,
+                              color: '#cbd5e1',
                             }}
                           />
                           <InputBase
                             placeholder="Value"
                             value={v.value}
-                            onChange={(e) => handleUpdateVariable(env.id, idx, 'value', e.target.value)}
+                            onChange={(e) => handleUpdateVariable(env.id, vIdx, 'value', e.target.value)}
                             sx={{
                               fontSize: 11,
                               fontFamily: 'monospace',
-                              bgcolor: '#0c0e14',
+                              bgcolor: '#0c0f17',
                               px: 0.75,
+                              py: 0.2,
                               borderRadius: 0.5,
                               border: 1,
-                              borderColor: 'divider',
+                              borderColor: '#1c2230',
                               flex: 1,
+                              color: '#cbd5e1',
                             }}
                           />
-                          <IconButton size="small" onClick={() => handleDeleteVariable(env.id, idx)}>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteVariable(env.id, vIdx);
+                            }}
+                            sx={{ p: 0.25, color: '#64748b' }}
+                          >
                             <Trash2 size={11} />
                           </IconButton>
                         </Box>
                       ))}
                     </Box>
-                  </Collapse>
+                  )}
                 </Box>
               );
             })}
@@ -676,28 +984,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* HISTORY VIEW */}
         {activeNavTab === 'history' && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                Recent Requests
-              </Typography>
-              {history.length > 0 && (
-                <Button size="small" color="error" onClick={onClearHistory} sx={{ fontSize: 11, py: 0 }}>
-                  Clear History
-                </Button>
-              )}
-            </Box>
-
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             {history.length === 0 ? (
-              <Box sx={{ p: 3, textAlign: 'center', color: 'text.disabled' }}>
-                <Clock size={28} style={{ margin: '0 auto 8px', color: '#2b3040' }} />
-                <Typography variant="body2" sx={{ fontSize: 12, color: 'text.secondary' }}>
-                  No Request History
+              <Box sx={{ p: 3, textAlign: 'center', color: '#475569' }}>
+                <Clock size={24} style={{ margin: '0 auto 8px', color: '#334155' }} />
+                <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
+                  No request history yet
                 </Typography>
               </Box>
             ) : (
               history.map((item) => {
-                const methodStyle = METHOD_COLORS[item.request.method] || METHOD_COLORS.GET;
+                const methodColor = METHOD_COLORS[item.request.method] || '#10b981';
+                const isSuccess = item.response && item.response.statusCode >= 200 && item.response.statusCode < 300;
 
                 return (
                   <Box
@@ -705,33 +1003,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => onSelectHistoryItem(item)}
                     sx={{
                       p: 1,
-                      bgcolor: '#10121a',
-                      border: 1,
-                      borderColor: 'divider',
-                      borderRadius: 1,
+                      borderRadius: '6px',
                       cursor: 'pointer',
-                      '&:hover': { bgcolor: '#161924', borderColor: 'primary.main' },
+                      bgcolor: '#11141c',
+                      border: 1,
+                      borderColor: '#1c2230',
+                      transition: 'all 0.15s ease',
+                      '&:hover': { bgcolor: '#161c28', borderColor: '#2e384d' },
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Chip
-                        label={item.request.method}
-                        size="small"
-                        sx={{
-                          height: 16,
-                          fontSize: 9,
-                          fontWeight: 700,
-                          fontFamily: 'monospace',
-                          bgcolor: methodStyle.bg,
-                          color: methodStyle.color,
-                        }}
-                      />
-                      <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 10 }}>
-                        {item.response ? formatDuration(item.response.timeMs) : ''}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <Typography sx={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: methodColor }}>
+                          {item.request.method}
+                        </Typography>
+                        <Typography sx={{ fontSize: 11, color: isSuccess ? '#10b981' : '#ef4444', fontWeight: 600, fontFamily: 'monospace' }}>
+                          {item.response ? `${item.response.statusCode} ${item.response.statusText}` : 'Error'}
+                        </Typography>
+                      </Box>
+                      {item.response && (
+                        <Typography sx={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace' }}>
+                          {formatDuration(item.response.timeMs)}
+                        </Typography>
+                      )}
                     </Box>
-                    <Typography variant="body2" sx={{ fontSize: 11, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.request.url || 'Empty URL'}
+                    <Typography sx={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.request.url}
                     </Typography>
                   </Box>
                 );
@@ -741,7 +1038,80 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </Box>
 
-      {/* Clean Postman-like New Collection Dialog (NO browser prompts or alerts) */}
+      {/* Pinned Bottom Navigation */}
+      <Box sx={{ p: 1, borderTop: 1, borderColor: '#1c2230', display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+        <Box
+          onClick={() => onNavTabChange && onNavTabChange('collections')}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: 1.25,
+            py: 0.75,
+            borderRadius: '6px',
+            cursor: 'pointer',
+            bgcolor: activeNavTab === 'collections' ? '#181e29' : 'transparent',
+            color: activeNavTab === 'collections' ? '#ffffff' : '#94a3b8',
+            '&:hover': { bgcolor: '#161924', color: '#f8fafc' },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Boxes size={14} color={activeNavTab === 'collections' ? '#20c997' : '#64748b'} />
+            <Typography sx={{ fontSize: 12, fontWeight: 600 }}>Collections</Typography>
+          </Box>
+          <Typography sx={{ fontSize: 11, color: '#64748b' }}>{collections.length}</Typography>
+        </Box>
+
+        <Box
+          onClick={() => onNavTabChange && onNavTabChange('envs')}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: 1.25,
+            py: 0.75,
+            borderRadius: '6px',
+            cursor: 'pointer',
+            bgcolor: activeNavTab === 'envs' ? '#181e29' : 'transparent',
+            color: activeNavTab === 'envs' ? '#ffffff' : '#94a3b8',
+            '&:hover': { bgcolor: '#161924', color: '#f8fafc' },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Settings size={14} color={activeNavTab === 'envs' ? '#20c997' : '#64748b'} />
+            <Typography sx={{ fontSize: 12, fontWeight: 600 }}>Environments</Typography>
+          </Box>
+          {activeEnv && (
+            <Typography sx={{ fontSize: 10, color: '#20c997', bgcolor: 'rgba(32, 201, 151, 0.1)', px: 0.75, py: 0.1, borderRadius: 1 }}>
+              {activeEnv.name}
+            </Typography>
+          )}
+        </Box>
+
+        <Box
+          onClick={() => onNavTabChange && onNavTabChange('history')}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: 1.25,
+            py: 0.75,
+            borderRadius: '6px',
+            cursor: 'pointer',
+            bgcolor: activeNavTab === 'history' ? '#181e29' : 'transparent',
+            color: activeNavTab === 'history' ? '#ffffff' : '#94a3b8',
+            '&:hover': { bgcolor: '#161924', color: '#f8fafc' },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Clock size={14} color={activeNavTab === 'history' ? '#20c997' : '#64748b'} />
+            <Typography sx={{ fontSize: 12, fontWeight: 600 }}>History</Typography>
+          </Box>
+          <Typography sx={{ fontSize: 11, color: '#64748b' }}>{history.length}</Typography>
+        </Box>
+      </Box>
+
+      {/* New Collection Modal */}
       <Dialog
         open={newCollectionDialogOpen}
         onClose={() => setNewCollectionDialogOpen(false)}
@@ -749,34 +1119,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
         fullWidth
         slotProps={{
           paper: {
-            sx: { bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 2 },
+            sx: { bgcolor: '#11141c', border: 1, borderColor: '#1c2230', borderRadius: 2 },
           },
         }}
       >
-        <DialogTitle sx={{ fontSize: 14, fontWeight: 700, pb: 1 }}>
+        <DialogTitle sx={{ fontSize: 14, fontWeight: 700, pb: 1, color: '#f8fafc' }}>
           Create New Collection
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" sx={{ fontSize: 12, color: 'text.secondary', mb: 1.5 }}>
-            Enter a name for your collection:
-          </Typography>
           <TextField
             autoFocus
             fullWidth
             size="small"
-            placeholder="e.g. Authentication APIs"
+            placeholder="Collection Name (e.g. Payments API)"
             value={newCollectionName}
             onChange={(e) => setNewCollectionName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCreateCollectionSubmit();
+            onKeyDown={(e) => e.key === 'Enter' && handleCreateCollectionSubmit()}
+            sx={{
+              mt: 1,
+              bgcolor: '#0c0f17',
+              borderRadius: 1,
+              '& .MuiInputBase-input': { fontSize: 13, color: '#f8fafc' },
             }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button size="small" onClick={() => setNewCollectionDialogOpen(false)} sx={{ color: 'text.secondary' }}>
+          <Button size="small" onClick={() => setNewCollectionDialogOpen(false)} sx={{ color: '#94a3b8' }}>
             Cancel
           </Button>
-          <Button size="small" variant="contained" onClick={handleCreateCollectionSubmit}>
+          <Button size="small" variant="contained" onClick={handleCreateCollectionSubmit} sx={{ bgcolor: '#20c997', color: '#000000', fontWeight: 600 }}>
             Create
           </Button>
         </DialogActions>

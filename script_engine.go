@@ -127,9 +127,12 @@ func (e *ScriptEngine) RunScript(
 	if resp != nil {
 		respObj := vm.NewObject()
 		_ = respObj.Set("code", resp.StatusCode)
-		_ = respObj.Set("status", resp.StatusText)
+		_ = respObj.Set("status", resp.StatusCode)
+		_ = respObj.Set("statusCode", resp.StatusCode)
+		_ = respObj.Set("statusText", resp.StatusText)
 		_ = respObj.Set("body", resp.Body)
 		_ = respObj.Set("responseTime", resp.TimeMs)
+		_ = respObj.Set("time", resp.TimeMs)
 
 		headersMap := make(map[string]string)
 		for _, h := range resp.Headers {
@@ -137,19 +140,39 @@ func (e *ScriptEngine) RunScript(
 		}
 		_ = respObj.Set("headers", headersMap)
 
-		_ = respObj.Set("json", func() (interface{}, error) {
+		var parsedJSON interface{}
+		trimmedBody := strings.TrimSpace(resp.Body)
+		if strings.HasPrefix(trimmedBody, "{") || strings.HasPrefix(trimmedBody, "[") {
+			_ = json.Unmarshal([]byte(trimmedBody), &parsedJSON)
+		}
+
+		jsonFunc := vm.ToValue(func() (interface{}, error) {
+			if parsedJSON != nil {
+				return parsedJSON, nil
+			}
 			var parsed interface{}
 			if err := json.Unmarshal([]byte(resp.Body), &parsed); err != nil {
-				return nil, err
+				return make(map[string]interface{}), nil
 			}
 			return parsed, nil
-		})
+		}).ToObject(vm)
+
+		if parsedMap, ok := parsedJSON.(map[string]interface{}); ok {
+			for k, v := range parsedMap {
+				_ = jsonFunc.Set(k, v)
+			}
+		}
+
+		_ = respObj.Set("json", jsonFunc)
+		_ = respObj.Set("data", jsonFunc)
 
 		_ = respObj.Set("text", func() string {
 			return resp.Body
 		})
 
 		_ = melsObj.Set("response", respObj)
+		_ = vm.Set("res", respObj)
+		_ = vm.Set("response", respObj)
 	}
 
 	// 3. Testing and Assertion Framework
@@ -173,6 +196,88 @@ func (e *ScriptEngine) RunScript(
 	const assertionJS = `
 	function expect(actual) {
 		return {
+			toBe: function(expected) {
+				if (actual !== expected) {
+					var actualStr = actual === undefined ? "undefined" : JSON.stringify(actual);
+					var expectedStr = expected === undefined ? "undefined" : JSON.stringify(expected);
+					throw new Error("Expected " + actualStr + " to be " + expectedStr);
+				}
+			},
+			toEqual: function(expected) {
+				if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+					var actualStr = actual === undefined ? "undefined" : JSON.stringify(actual);
+					var expectedStr = expected === undefined ? "undefined" : JSON.stringify(expected);
+					throw new Error("Expected " + actualStr + " to deeply equal " + expectedStr);
+				}
+			},
+			toBeTruthy: function() {
+				if (!actual) {
+					throw new Error("Expected " + JSON.stringify(actual) + " to be truthy");
+				}
+			},
+			toBeFalsy: function() {
+				if (actual) {
+					throw new Error("Expected " + JSON.stringify(actual) + " to be falsy");
+				}
+			},
+			toBeNull: function() {
+				if (actual !== null) {
+					throw new Error("Expected " + JSON.stringify(actual) + " to be null");
+				}
+			},
+			toBeUndefined: function() {
+				if (actual !== undefined) {
+					throw new Error("Expected " + JSON.stringify(actual) + " to be undefined");
+				}
+			},
+			toBeDefined: function() {
+				if (actual === undefined) {
+					throw new Error("Expected value to be defined");
+				}
+			},
+			toContain: function(item) {
+				if (typeof actual === 'string' && !actual.includes(item)) {
+					throw new Error("Expected string " + JSON.stringify(actual) + " to contain " + JSON.stringify(item));
+				} else if (Array.isArray(actual) && !actual.includes(item)) {
+					throw new Error("Expected array to contain " + JSON.stringify(item));
+				} else if (actual && typeof actual === 'object' && !(item in actual)) {
+					throw new Error("Expected object to contain key " + item);
+				}
+			},
+			toBeGreaterThan: function(n) {
+				if (typeof actual !== 'number' || actual <= n) {
+					throw new Error("Expected " + actual + " to be greater than " + n);
+				}
+			},
+			toBeGreaterThanOrEqual: function(n) {
+				if (typeof actual !== 'number' || actual < n) {
+					throw new Error("Expected " + actual + " to be greater than or equal to " + n);
+				}
+			},
+			toBeLessThan: function(n) {
+				if (typeof actual !== 'number' || actual >= n) {
+					throw new Error("Expected " + actual + " to be less than " + n);
+				}
+			},
+			toBeLessThanOrEqual: function(n) {
+				if (typeof actual !== 'number' || actual > n) {
+					throw new Error("Expected " + actual + " to be less than or equal to " + n);
+				}
+			},
+			toHaveProperty: function(prop, val) {
+				if (!actual || typeof actual !== 'object' || !(prop in actual)) {
+					throw new Error("Expected object to have property '" + prop + "'");
+				}
+				if (val !== undefined && actual[prop] !== val) {
+					throw new Error("Expected property '" + prop + "' to equal " + JSON.stringify(val) + " but got " + JSON.stringify(actual[prop]));
+				}
+			},
+			toHaveLength: function(length) {
+				var actualLen = (actual && actual.length !== undefined) ? actual.length : undefined;
+				if (actualLen !== length) {
+					throw new Error("Expected length " + length + " but got " + actualLen);
+				}
+			},
 			to: {
 				equal: function(expected) {
 					if (actual !== expected) {
@@ -215,7 +320,7 @@ func (e *ScriptEngine) RunScript(
 				},
 				have: {
 					status: function(code) {
-						var status = mels.response ? mels.response.code : undefined;
+						var status = (typeof res !== 'undefined' && res.status !== undefined) ? res.status : (mels.response ? mels.response.code : undefined);
 						if (status !== code) {
 							throw new Error("Expected status " + code + " but got " + status);
 						}
@@ -229,11 +334,9 @@ func (e *ScriptEngine) RunScript(
 						}
 					},
 					header: function(headerKey) {
-						if (!mels.response || !mels.response.headers) {
-							throw new Error("No response headers available");
-						}
+						var headers = (typeof res !== 'undefined' && res.headers) ? res.headers : (mels.response ? mels.response.headers : {});
 						var found = false;
-						for (var k in mels.response.headers) {
+						for (var k in headers) {
 							if (k.toLowerCase() === headerKey.toLowerCase()) {
 								found = true;
 								break;

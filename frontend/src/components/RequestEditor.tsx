@@ -223,8 +223,8 @@ export const RequestEditor: React.FC<RequestEditorProps> = ({
           gap: 1,
           alignItems: 'center',
           borderBottom: 1,
-          borderColor: 'divider',
-          bgcolor: 'background.paper',
+          borderColor: '#1c2230',
+          bgcolor: '#0c0f17',
         }}
       >
         <Select
@@ -232,12 +232,19 @@ export const RequestEditor: React.FC<RequestEditorProps> = ({
           value={request.method}
           onChange={(e) => updateField('method', e.target.value as HttpMethod)}
           sx={{
-            minWidth: 95,
+            minWidth: 90,
             fontWeight: 700,
             fontFamily: 'monospace',
             fontSize: 12,
-            color: METHOD_COLORS[request.method] || '#fff',
-            bgcolor: '#11131c',
+            color: METHOD_COLORS[request.method] || '#f59e0b',
+            bgcolor: '#11141c',
+            borderRadius: '8px',
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: '#1c2230',
+            },
+            '&:hover .MuiOutlinedInput-notchedOutline': {
+              borderColor: '#2e384d',
+            },
           }}
         >
           {METHODS.map((m) => (
@@ -252,20 +259,24 @@ export const RequestEditor: React.FC<RequestEditorProps> = ({
             flex: 1,
             display: 'flex',
             alignItems: 'center',
-            bgcolor: '#11131c',
+            bgcolor: '#11141c',
             border: 1,
-            borderColor: 'divider',
-            borderRadius: 1,
-            px: 1.25,
-            py: 0.5,
+            borderColor: '#1c2230',
+            borderRadius: '8px',
+            px: 1.5,
+            py: 0.6,
           }}
         >
           <InputBase
             fullWidth
-            placeholder="Enter request URL (e.g. https://httpbin.org/get or {{baseUrl}}/users)"
+            placeholder="{{base_url}}/v1/charges"
             value={request.url}
             onChange={(e) => handleUrlChange(e.target.value)}
-            sx={{ fontFamily: 'monospace', fontSize: 13 }}
+            sx={{
+              fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+              fontSize: 13,
+              color: '#f1f5f9',
+            }}
           />
         </Box>
 
@@ -275,17 +286,32 @@ export const RequestEditor: React.FC<RequestEditorProps> = ({
             color="error"
             startIcon={<Square size={13} fill="currentColor" />}
             onClick={onCancel}
-            sx={{ px: 2, height: 36 }}
+            sx={{
+              px: 2.5,
+              height: 36,
+              borderRadius: '8px',
+              fontWeight: 600,
+            }}
           >
             Cancel
           </Button>
         ) : (
           <Button
             variant="contained"
-            color="primary"
-            startIcon={<Send size={13} />}
             onClick={onSend}
-            sx={{ px: 2.5, height: 36, fontWeight: 600 }}
+            sx={{
+              px: 3,
+              height: 36,
+              bgcolor: '#ffffff',
+              color: '#000000',
+              fontWeight: 700,
+              fontSize: 13,
+              borderRadius: '8px',
+              textTransform: 'none',
+              '&:hover': {
+                bgcolor: '#e2e8f0',
+              },
+            }}
           >
             Send
           </Button>
@@ -293,83 +319,54 @@ export const RequestEditor: React.FC<RequestEditorProps> = ({
       </Box>
 
       {/* Navigation Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
+      <Box sx={{ borderBottom: 1, borderColor: '#1c2230', bgcolor: '#0c0f17', px: 1 }}>
         <Tabs
           value={activeTab}
           onChange={(_, v) => setActiveTab(v)}
           variant="scrollable"
           scrollButtons="auto"
+          sx={{
+            minHeight: 36,
+            '& .MuiTabs-indicator': {
+              bgcolor: '#20c997',
+              height: 2,
+            },
+          }}
         >
           <Tab
             value="params"
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Sliders size={13} />
-                <span>Params</span>
-                {activeParamsCount > 0 && <Chip label={activeParamsCount} size="small" sx={{ height: 16, fontSize: 10 }} />}
-              </Box>
-            }
+            label="Params"
+            sx={{ minHeight: 36, py: 0.5, px: 1.5, fontSize: 13, textTransform: 'none', color: '#94a3b8', '&.Mui-selected': { color: '#f1f5f9', fontWeight: 600 } }}
           />
           <Tab
             value="headers"
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Layers size={13} />
-                <span>Headers</span>
-                {activeHeadersCount > 0 && <Chip label={activeHeadersCount} size="small" sx={{ height: 16, fontSize: 10 }} />}
-              </Box>
-            }
+            label="Headers"
+            sx={{ minHeight: 36, py: 0.5, px: 1.5, fontSize: 13, textTransform: 'none', color: '#94a3b8', '&.Mui-selected': { color: '#f1f5f9', fontWeight: 600 } }}
           />
           <Tab
             value="body"
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Code2 size={13} />
-                <span>Body</span>
-                {request.body.type !== 'none' && (
-                  <Chip label={request.body.type} size="small" sx={{ height: 16, fontSize: 10, textTransform: 'uppercase' }} />
-                )}
-              </Box>
-            }
-          />
-          <Tab
-            value="auth"
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Shield size={13} />
-                <span>Auth</span>
-                {request.auth.type !== 'none' && (
-                  <Chip label={request.auth.type} size="small" sx={{ height: 16, fontSize: 10, textTransform: 'uppercase' }} />
-                )}
-              </Box>
-            }
+            label="Body"
+            sx={{ minHeight: 36, py: 0.5, px: 1.5, fontSize: 13, textTransform: 'none', color: '#f1f5f9', '&.Mui-selected': { color: '#f1f5f9', fontWeight: 600 } }}
           />
           <Tab
             value="pre-script"
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <FileCode size={13} />
-                <span>Pre-request Script</span>
-              </Box>
-            }
+            label="Scripts"
+            sx={{ minHeight: 36, py: 0.5, px: 1.5, fontSize: 13, textTransform: 'none', color: '#94a3b8', '&.Mui-selected': { color: '#f1f5f9', fontWeight: 600 } }}
           />
           <Tab
             value="tests"
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <CheckCircle2 size={13} />
-                <span>Tests</span>
-              </Box>
-            }
+            label="Tests"
+            sx={{ minHeight: 36, py: 0.5, px: 1.5, fontSize: 13, textTransform: 'none', color: '#94a3b8', '&.Mui-selected': { color: '#f1f5f9', fontWeight: 600 } }}
+          />
+          <Tab
+            value="auth"
+            label="Auth"
+            sx={{ minHeight: 36, py: 0.5, px: 1.5, fontSize: 13, textTransform: 'none', color: '#94a3b8', '&.Mui-selected': { color: '#f1f5f9', fontWeight: 600 } }}
           />
           <Tab
             value="settings"
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Sliders size={13} />
-                <span>Settings</span>
-              </Box>
-            }
+            label="Settings"
+            sx={{ minHeight: 36, py: 0.5, px: 1.5, fontSize: 13, textTransform: 'none', color: '#94a3b8', '&.Mui-selected': { color: '#f1f5f9', fontWeight: 600 } }}
           />
         </Tabs>
       </Box>
@@ -573,14 +570,26 @@ export const RequestEditor: React.FC<RequestEditorProps> = ({
 
             {/* RAW (Monaco VS Code Editor) */}
             {request.body.type === 'raw' && (
-              <Box sx={{ flex: 1, height: '100%', minHeight: 280, display: 'flex', flexDirection: 'column' }}>
-                <CodeEditor
-                  value={request.body.raw || ''}
-                  onChange={(val) => updateField('body', { ...request.body, raw: val })}
-                  language={(request.body.rawType as any) || 'json'}
-                  height="100%"
-                  minHeight={280}
-                />
+              <Box sx={{ flex: 1, height: '100%', minHeight: 280, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography
+                  sx={{
+                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                    fontSize: 12,
+                    color: '#64748b',
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  {`// request body — application/${request.body.rawType || 'json'}`}
+                </Typography>
+                <Box sx={{ flex: 1, height: '100%', minHeight: 250 }}>
+                  <CodeEditor
+                    value={request.body.raw || ''}
+                    onChange={(val) => updateField('body', { ...request.body, raw: val })}
+                    language={(request.body.rawType as any) || 'json'}
+                    height="100%"
+                    minHeight={250}
+                  />
+                </Box>
               </Box>
             )}
 
@@ -931,20 +940,26 @@ export const RequestEditor: React.FC<RequestEditorProps> = ({
               <Chip
                 label="+ Status 200 Check"
                 size="small"
-                onClick={() => insertSnippet('testScript', `mels.test("Status code is 200", function() {\n  mels.expect(mels.response.code).to.equal(200);\n});`)}
-                sx={{ cursor: 'pointer', fontSize: 11 }}
+                onClick={() => insertSnippet('testScript', `mels.test("Status code is 200", () => {\n  mels.expect(res.status).toBe(200);\n});`)}
+                sx={{ cursor: 'pointer', fontSize: 11, bgcolor: '#161c28', color: '#cbd5e1', '&:hover': { bgcolor: '#20c997', color: '#000000' } }}
               />
               <Chip
                 label="+ Response Time Check"
                 size="small"
-                onClick={() => insertSnippet('testScript', `mels.test("Response time is under 500ms", function() {\n  mels.expect(mels.response.responseTime).to.be.below(500);\n});`)}
-                sx={{ cursor: 'pointer', fontSize: 11 }}
+                onClick={() => insertSnippet('testScript', `mels.test("Response time is under 1000ms", () => {\n  mels.expect(res.time).toBeLessThan(1000);\n});`)}
+                sx={{ cursor: 'pointer', fontSize: 11, bgcolor: '#161c28', color: '#cbd5e1', '&:hover': { bgcolor: '#20c997', color: '#000000' } }}
               />
               <Chip
                 label="+ JSON Property Check"
                 size="small"
-                onClick={() => insertSnippet('testScript', `mels.test("JSON field check", function() {\n  var json = mels.response.json();\n  mels.expect(json).to.have.property("data");\n});`)}
-                sx={{ cursor: 'pointer', fontSize: 11 }}
+                onClick={() => insertSnippet('testScript', `mels.test("Check response data", () => {\n  mels.expect(res.json).toBeDefined();\n});`)}
+                sx={{ cursor: 'pointer', fontSize: 11, bgcolor: '#161c28', color: '#cbd5e1', '&:hover': { bgcolor: '#20c997', color: '#000000' } }}
+              />
+              <Chip
+                label="+ Body Text Check"
+                size="small"
+                onClick={() => insertSnippet('testScript', `mels.test("Body has content", () => {\n  mels.expect(res.body).toBeTruthy();\n});`)}
+                sx={{ cursor: 'pointer', fontSize: 11, bgcolor: '#161c28', color: '#cbd5e1', '&:hover': { bgcolor: '#20c997', color: '#000000' } }}
               />
             </Box>
             <Box sx={{ flex: 1, minHeight: 260 }}>

@@ -233,91 +233,50 @@ export const ResponseViewer: React.FC<ResponseViewerProps> = ({
           minWidth: 380,
         }}
       >
-        {/* Response Header Status */}
+        {/* Response Header Status matching screenshot */}
         <Box
           sx={{
-            p: 1.25,
+            py: 1,
             px: 2,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             borderBottom: 1,
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
+            borderColor: '#1c2230',
+            bgcolor: '#0c0f17',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {isNetworkError ? (
-              <Chip
-                label="Could Not Send Request"
-                color="error"
-                size="small"
-                sx={{ fontWeight: 700, fontSize: 11 }}
-              />
+              <Typography sx={{ fontWeight: 700, fontSize: 13, color: '#ef4444', fontFamily: 'monospace' }}>
+                Error
+              </Typography>
             ) : (
-              <Chip
-                label={`${response.statusCode} ${statusTextClean || 'OK'}`}
-                color={statusColor}
-                size="small"
-                sx={{ fontWeight: 700, fontSize: 11, fontFamily: 'monospace' }}
-              />
+              <Typography sx={{ fontWeight: 700, fontSize: 13, color: '#20c997', fontFamily: "'JetBrains Mono', monospace" }}>
+                {`${response.statusCode} ${statusTextClean || 'OK'}`}
+              </Typography>
             )}
 
-            <Tooltip
-              title={
-                <Box sx={{ p: 0.5, fontSize: 11, fontFamily: 'monospace' }}>
-                  <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, color: '#f8fafc' }}>
-                    Network Timing Breakdown
-                  </Typography>
-                  {response.timing ? (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                      {response.timing.dnsLookupMs > 0 && <div>DNS Lookup: {response.timing.dnsLookupMs} ms</div>}
-                      {response.timing.tcpConnMs > 0 && <div>TCP Connect: {response.timing.tcpConnMs} ms</div>}
-                      {response.timing.tlsHandshakeMs > 0 && <div>TLS Handshake: {response.timing.tlsHandshakeMs} ms</div>}
-                      <div>Server TTFB: {response.timing.serverTimeMs} ms</div>
-                      <div>Download Time: {response.timing.downloadTimeMs} ms</div>
-                      <Divider sx={{ my: 0.5, borderColor: 'rgba(255,255,255,0.15)' }} />
-                      <div style={{ fontWeight: 'bold', color: '#10b981' }}>Total Duration: {response.timeMs} ms</div>
-                    </Box>
-                  ) : (
-                    <div>Total Elapsed: {response.timeMs} ms</div>
-                  )}
-                </Box>
-              }
-              arrow
-            >
-              <Chip
-                icon={<Clock size={11} />}
-                label={formatDuration(response.timeMs)}
-                size="small"
-                variant="outlined"
-                sx={{ fontSize: 11, fontFamily: 'monospace', cursor: 'help' }}
-              />
-            </Tooltip>
+            <Typography sx={{ fontSize: 12, color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace" }}>
+              {formatDuration(response.timeMs)}
+            </Typography>
 
-            <Chip
-              icon={<Layers size={11} />}
-              label={formatBytes(response.size)}
-              size="small"
-              variant="outlined"
-              sx={{ fontSize: 11, fontFamily: 'monospace' }}
-            />
-
-            {response.proto && (
-              <Chip
-                label={response.proto}
-                size="small"
-                variant="outlined"
-                sx={{ fontSize: 10, fontFamily: 'monospace', color: 'text.secondary' }}
-              />
-            )}
+            <Typography sx={{ fontSize: 12, color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace" }}>
+              {formatBytes(response.size)}
+            </Typography>
           </Box>
 
-          <Tooltip title="Copy response body">
-            <IconButton size="small" onClick={handleCopy} disabled={!rawBody}>
-              {copied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
-            </IconButton>
-          </Tooltip>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Typography sx={{ fontSize: 12, color: '#64748b', fontFamily: "'JetBrains Mono', monospace" }}>
+              {response.contentType?.split(';')[0] || 'application/json'}
+            </Typography>
+
+            <Tooltip title="Copy response body">
+              <IconButton size="small" onClick={handleCopy} disabled={!rawBody} sx={{ color: '#64748b', p: 0.5 }}>
+                {copied ? <Check size={14} color="#20c997" /> : <Copy size={14} />}
+              </IconButton>
+            </Tooltip>
+          </Box>
         </Box>
 
         {/* Network Error Banner if request failed completely */}

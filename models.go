@@ -93,6 +93,7 @@ type RequestTiming struct {
 	ServerTimeMs    int64 `json:"serverTimeMs"` // TTFB (Time to First Byte)
 	DownloadTimeMs  int64 `json:"downloadTimeMs"`
 	TotalDurationMs int64 `json:"totalDurationMs"`
+	ConnReused      bool  `json:"connReused"`
 }
 
 // TestResult represents the outcome of an assertion inside a test script.

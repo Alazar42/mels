@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ThemeProvider, CssBaseline, Box, Chip, IconButton, Tooltip } from '@mui/material';
+import { ThemeProvider, CssBaseline, Box } from '@mui/material';
 import { melsTheme } from './theme';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { RequestEditor } from './components/RequestEditor';
 import { ResponseViewer } from './components/ResponseViewer';
-import { StatusBar } from './components/StatusBar';
+import { NetworkTimingPanel } from './components/NetworkTimingPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import {
   Collection,
@@ -13,38 +13,98 @@ import {
   HistoryItem,
   RequestItem,
   ResponseData,
-  TabItem,
   createDefaultRequest,
 } from './types';
 import { buildVariableMap, resolveRequestVariables } from './utils/interpolation';
 import { SaveFileDialog, ReadFileContent } from '../wailsjs/go/main/App';
 import { executeRequest, cancelRequest } from './services/requestEngine';
 import { AsyncStorage } from './utils/storage';
-import { Boxes, Settings, Clock, Plus, X } from 'lucide-react';
 
-const METHOD_COLORS: Record<string, { bg: string; color: string }> = {
-  GET: { bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981' },
-  POST: { bg: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' },
-  PUT: { bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' },
-  PATCH: { bg: 'rgba(168, 85, 247, 0.15)', color: '#a855f7' },
-  DELETE: { bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' },
-  OPTIONS: { bg: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4' },
-  HEAD: { bg: 'rgba(100, 116, 139, 0.15)', color: '#64748b' },
+const DEFAULT_TESTING_COLLECTION: Collection = {
+  schemaVersion: '1.0.0',
+  id: 'col_testing_api',
+  name: 'Testing API (httpbin)',
+  items: [
+    {
+      id: 'req_httpbin_get',
+      name: 'GET Request',
+      type: 'request',
+      request: {
+        id: 'req_httpbin_get',
+        name: 'GET Request',
+        method: 'GET',
+        url: 'https://httpbin.org/get',
+        queryParams: [{ key: 'test', value: 'mels', enabled: true }],
+        headers: [{ key: 'Accept', value: 'application/json', enabled: true }],
+        body: { type: 'none' },
+        auth: { type: 'none' },
+        settings: { timeoutMs: 30000, followRedirects: true, maxRedirects: 10, verifySSL: true },
+        testScript: `mels.test("Status is 200", () => {\n  mels.expect(res.status).toBe(200);\n});`,
+      },
+    },
+    {
+      id: 'req_httpbin_post',
+      name: 'POST JSON',
+      type: 'request',
+      request: {
+        id: 'req_httpbin_post',
+        name: 'POST JSON',
+        method: 'POST',
+        url: 'https://httpbin.org/post',
+        queryParams: [],
+        headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }],
+        body: {
+          type: 'raw',
+          rawType: 'json',
+          raw: '{\n  "message": "Hello from Mels!",\n  "version": "1.0.0"\n}',
+        },
+        auth: { type: 'none' },
+        settings: { timeoutMs: 30000, followRedirects: true, maxRedirects: 10, verifySSL: true },
+        testScript: `mels.test("Response contains JSON", () => {\n  mels.expect(res.status).toBe(200);\n  mels.expect(res.json.json.message).toBe("Hello from Mels!");\n});`,
+      },
+    },
+    {
+      id: 'req_httpbin_delay',
+      name: 'Delay Timing Test',
+      type: 'request',
+      request: {
+        id: 'req_httpbin_delay',
+        name: 'Delay Timing Test',
+        method: 'GET',
+        url: 'https://httpbin.org/delay/1',
+        queryParams: [],
+        headers: [],
+        body: { type: 'none' },
+        auth: { type: 'none' },
+        settings: { timeoutMs: 30000, followRedirects: true, maxRedirects: 10, verifySSL: true },
+      },
+    },
+  ],
 };
+
+const DEFAULT_TEST_ENVIRONMENTS: Environment[] = [
+  {
+    id: 'env_httpbin',
+    name: 'httpbin Test',
+    variables: [
+      { key: 'baseUrl', value: 'https://httpbin.org', enabled: true },
+    ],
+  },
+];
 
 export function App() {
   const [collections, setCollections] = useState<Collection[]>(() => {
     const saved = localStorage.getItem('mels_collections');
-    return saved ? JSON.parse(saved) : [];
+    return saved ? JSON.parse(saved) : [DEFAULT_TESTING_COLLECTION];
   });
 
   const [environments, setEnvironments] = useState<Environment[]>(() => {
     const saved = localStorage.getItem('mels_environments');
-    return saved ? JSON.parse(saved) : [];
+    return saved ? JSON.parse(saved) : DEFAULT_TEST_ENVIRONMENTS;
   });
 
   const [activeEnvId, setActiveEnvId] = useState<string | null>(() => {
-    return localStorage.getItem('mels_active_env_id') || null;
+    return localStorage.getItem('mels_active_env_id') || 'env_httpbin';
   });
 
   const [history, setHistory] = useState<HistoryItem[]>(() => {
@@ -52,30 +112,50 @@ export function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activityTab, setActivityTab] = useState<'collections' | 'envs' | 'history'>('collections');
 
-  const [tabs, setTabs] = useState<TabItem[]>(() => {
-    const firstReq = createDefaultRequest('Untitled Request');
-    return [
-      {
-        id: 'tab_1',
-        title: 'Untitled Request',
-        request: firstReq,
-        response: null,
-        isLoading: false,
-      },
-    ];
+  const defaultReq =
+    (DEFAULT_TESTING_COLLECTION.items[0]?.request as RequestItem) ||
+    createDefaultRequest('GET Request');
+
+  const [activeRequestId, setActiveRequestId] = useState<string>(() => {
+    return defaultReq.id;
   });
 
-  const [activeTabId, setActiveTabId] = useState<string>('tab_1');
+  const [activeRequest, setActiveRequest] = useState<RequestItem>(() => {
+    const saved = localStorage.getItem('mels_active_request');
+    return saved ? JSON.parse(saved) : defaultReq;
+  });
+
+  const [activeResponse, setActiveResponse] = useState<ResponseData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Resizable Views State
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('mels_sidebar_width');
+    return saved ? parseInt(saved, 10) : 240;
+  });
+  const [topPercent, setTopPercent] = useState<number>(() => {
+    const saved = localStorage.getItem('mels_top_percent');
+    return saved ? parseFloat(saved) : 50;
+  });
+
+  const centerColumnRef = useRef<HTMLDivElement>(null);
 
   // Initial Load from Persistent Disk Storage (AsyncStorage)
   useEffect(() => {
     (async () => {
       try {
         const savedCols = await AsyncStorage.getItem<Collection[]>('mels_collections', []);
-        if (savedCols && savedCols.length > 0) setCollections(savedCols);
+        if (savedCols && savedCols.length > 0) {
+          setCollections(savedCols);
+          // If active request belongs to saved collections, set it
+          const firstReq = savedCols[0]?.items?.[0]?.request;
+          if (firstReq) {
+            setActiveRequestId(firstReq.id);
+            setActiveRequest(firstReq);
+          }
+        }
 
         const savedEnvs = await AsyncStorage.getItem<Environment[]>('mels_environments', []);
         if (savedEnvs && savedEnvs.length > 0) setEnvironments(savedEnvs);
@@ -91,7 +171,7 @@ export function App() {
     })();
   }, []);
 
-  // Save to AsyncStorage on change
+  // Save to AsyncStorage and LocalStorage on change
   useEffect(() => {
     AsyncStorage.setItem('mels_collections', collections);
   }, [collections]);
@@ -112,24 +192,17 @@ export function App() {
     AsyncStorage.setItem('mels_history', history);
   }, [history]);
 
-  // Resizable Views State
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    const saved = localStorage.getItem('mels_sidebar_width');
-    return saved ? parseInt(saved, 10) : 260;
-  });
-  const [editorPercent, setEditorPercent] = useState<number>(() => {
-    const saved = localStorage.getItem('mels_editor_percent');
-    return saved ? parseFloat(saved) : 50;
-  });
-  const contentAreaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    localStorage.setItem('mels_active_request', JSON.stringify(activeRequest));
+  }, [activeRequest]);
 
   useEffect(() => {
     localStorage.setItem('mels_sidebar_width', sidebarWidth.toString());
   }, [sidebarWidth]);
 
   useEffect(() => {
-    localStorage.setItem('mels_editor_percent', editorPercent.toString());
-  }, [editorPercent]);
+    localStorage.setItem('mels_top_percent', topPercent.toString());
+  }, [topPercent]);
 
   // Drag handler for sidebar width
   const handleSidebarMouseDown = (e: React.MouseEvent) => {
@@ -139,7 +212,7 @@ export function App() {
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const delta = moveEvent.clientX - startX;
-      const newWidth = Math.max(180, Math.min(500, startWidth + delta));
+      const newWidth = Math.max(180, Math.min(450, startWidth + delta));
       setSidebarWidth(newWidth);
     };
 
@@ -156,17 +229,17 @@ export function App() {
     document.body.style.userSelect = 'none';
   };
 
-  // Drag handler for editor / response split percentage
-  const handleSplitterMouseDown = (e: React.MouseEvent) => {
+  // Drag handler for top/bottom center split percentage
+  const handleVerticalSplitterMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (!contentAreaRef.current) return;
-    const rect = contentAreaRef.current.getBoundingClientRect();
+    if (!centerColumnRef.current) return;
+    const rect = centerColumnRef.current.getBoundingClientRect();
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
-      const offsetX = moveEvent.clientX - rect.left;
-      const percent = (offsetX / rect.width) * 100;
+      const offsetY = moveEvent.clientY - rect.top;
+      const percent = (offsetY / rect.height) * 100;
       const clamped = Math.max(25, Math.min(75, percent));
-      setEditorPercent(clamped);
+      setTopPercent(clamped);
     };
 
     const handleMouseUp = () => {
@@ -178,70 +251,52 @@ export function App() {
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
   };
 
-  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
   const activeEnvironment = environments.find((e) => e.id === activeEnvId) || null;
 
-  const handleSelectTab = (id: string) => {
-    setActiveTabId(id);
-  };
-
-  const handleNewTab = (req?: RequestItem) => {
-    const newReq = req || createDefaultRequest('New Request');
-    const newTab: TabItem = {
-      id: 'tab_' + Math.random().toString(36).substring(2, 9),
-      title: newReq.name || 'New Request',
-      request: newReq,
-      response: null,
-      isLoading: false,
-    };
-    setTabs([...tabs, newTab]);
-    setActiveTabId(newTab.id);
-  };
-
-  const handleCloseTab = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (tabs.length === 1) return;
-    const nextTabs = tabs.filter((t) => t.id !== id);
-    setTabs(nextTabs);
-    if (activeTabId === id) {
-      setActiveTabId(nextTabs[nextTabs.length - 1].id);
-    }
+  const handleSelectCollectionRequest = (req: RequestItem) => {
+    setActiveRequestId(req.id);
+    setActiveRequest(JSON.parse(JSON.stringify(req)));
   };
 
   const handleUpdateRequest = (updatedReq: RequestItem) => {
-    setTabs(
-      tabs.map((t) =>
-        t.id === activeTabId
-          ? {
-              ...t,
-              title: updatedReq.name || t.title,
-              request: updatedReq,
-              isDirty: true,
-            }
-          : t
-      )
+    setActiveRequest(updatedReq);
+
+    // Also update inside collections tree
+    const updateNodes = (nodes: any[]): any[] =>
+      nodes.map((node) => {
+        if (node.id === updatedReq.id && node.type === 'request') {
+          return { ...node, name: updatedReq.name, request: updatedReq };
+        }
+        if (node.children) {
+          return { ...node, children: updateNodes(node.children) };
+        }
+        return node;
+      });
+
+    setCollections((prev) =>
+      prev.map((col) => ({
+        ...col,
+        items: updateNodes(col.items),
+      }))
     );
   };
 
   const handleSendRequest = async () => {
-    if (!activeTab || activeTab.isLoading) return;
-
-    setTabs(
-      tabs.map((t) => (t.id === activeTabId ? { ...t, isLoading: true } : t))
-    );
+    if (isLoading) return;
+    setIsLoading(true);
 
     try {
       const variableMap = buildVariableMap(activeEnvironment);
-      const resolvedReq = resolveRequestVariables(activeTab.request, variableMap);
+      const resolvedReq = resolveRequestVariables(activeRequest, variableMap);
       resolvedReq.variables = variableMap;
 
-      // Execute Request via Native Desktop Engine
       const responseData = await executeRequest(resolvedReq);
 
+      // If scripts updated environment variables
       if (responseData.updatedVariables && activeEnvId) {
         const updatedMap = responseData.updatedVariables;
         setEnvironments((prevEnvs) =>
@@ -268,18 +323,13 @@ export function App() {
         );
       }
 
-      setTabs(
-        tabs.map((t) =>
-          t.id === activeTabId
-            ? { ...t, isLoading: false, response: responseData }
-            : t
-        )
-      );
+      setActiveResponse(responseData);
+      setIsLoading(false);
 
       const newHistoryItem: HistoryItem = {
         id: 'hist_' + Date.now(),
         timestamp: Date.now(),
-        request: JSON.parse(JSON.stringify(activeTab.request)),
+        request: JSON.parse(JSON.stringify(activeRequest)),
         response: {
           statusCode: responseData.statusCode,
           statusText: responseData.statusText,
@@ -292,7 +342,7 @@ export function App() {
       setHistory((prev) => [newHistoryItem, ...prev.slice(0, 99)]);
     } catch (err: any) {
       const errorResp: ResponseData = {
-        requestId: activeTab.request.id,
+        requestId: activeRequest.id,
         statusCode: 0,
         statusText: 'Client Error',
         proto: 'HTTP/1.1',
@@ -310,6 +360,7 @@ export function App() {
           serverTimeMs: 0,
           downloadTimeMs: 0,
           totalDurationMs: 0,
+          connReused: false,
         },
         isBinary: false,
         isTruncated: false,
@@ -318,27 +369,15 @@ export function App() {
         scriptLogs: [],
         redirectHistory: [],
       };
-
-      setTabs(
-        tabs.map((t) =>
-          t.id === activeTabId
-            ? { ...t, isLoading: false, response: errorResp }
-            : t
-        )
-      );
+      setActiveResponse(errorResp);
+      setIsLoading(false);
     }
   };
 
   const handleCancelRequest = async () => {
-    if (!activeTab || !activeTab.isLoading) return;
-    await cancelRequest(activeTab.request.id);
-    setTabs(
-      tabs.map((t) => (t.id === activeTabId ? { ...t, isLoading: false } : t))
-    );
-  };
-
-  const handleSelectCollectionRequest = (req: RequestItem) => {
-    handleNewTab(JSON.parse(JSON.stringify(req)));
+    if (!isLoading) return;
+    await cancelRequest(activeRequest.id);
+    setIsLoading(false);
   };
 
   const handleAddRequestToCollection = (collectionId: string, folderId?: string) => {
@@ -376,7 +415,8 @@ export function App() {
         };
       })
     );
-    handleNewTab(newReq);
+    setActiveRequestId(newReq.id);
+    setActiveRequest(newReq);
   };
 
   const handleAddCollection = (name: string) => {
@@ -386,7 +426,7 @@ export function App() {
       name: name || 'New Collection',
       items: [],
     };
-    setCollections((prev) => [newCol, ...prev]);
+    setCollections((prev) => [...prev, newCol]);
   };
 
   const handleDeleteCollection = (collectionId: string) => {
@@ -399,24 +439,112 @@ export function App() {
     );
   };
 
-  const handleAddFolder = (collectionId: string) => {
+  const handleAddFolder = (collectionId: string, parentFolderId?: string) => {
+    const newFolder = {
+      id: 'folder_' + Math.random().toString(36).substring(2, 9),
+      name: 'New Folder',
+      type: 'folder' as const,
+      children: [],
+    };
+
     setCollections(
       collections.map((col) => {
         if (col.id !== collectionId) return col;
+
+        if (parentFolderId) {
+          const addToFolder = (nodes: any[]): any[] =>
+            nodes.map((node) => {
+              if (node.id === parentFolderId) {
+                return {
+                  ...node,
+                  children: [...(node.children || []), newFolder],
+                };
+              }
+              if (node.children) {
+                return { ...node, children: addToFolder(node.children) };
+              }
+              return node;
+            });
+          return { ...col, items: addToFolder(col.items) };
+        }
+
         return {
           ...col,
-          items: [
-            ...col.items,
-            {
-              id: 'folder_' + Math.random().toString(36).substring(2, 9),
-              name: 'New Folder',
-              type: 'folder',
-              children: [],
-            },
-          ],
+          items: [...col.items, newFolder],
         };
       })
     );
+  };
+
+  const handleRenameNode = (collectionId: string, nodeId: string, newName: string) => {
+    const updateNodeName = (nodes: any[]): any[] =>
+      nodes.map((node) => {
+        if (node.id === nodeId) {
+          const updated = { ...node, name: newName };
+          if (node.type === 'request' && node.request) {
+            updated.request = { ...node.request, name: newName };
+          }
+          return updated;
+        }
+        if (node.children) {
+          return { ...node, children: updateNodeName(node.children) };
+        }
+        return node;
+      });
+
+    setCollections((prev) =>
+      prev.map((col) => {
+        if (col.id !== collectionId) return col;
+        return { ...col, items: updateNodeName(col.items) };
+      })
+    );
+
+    if (activeRequest.id === nodeId) {
+      setActiveRequest((prev) => ({ ...prev, name: newName }));
+    }
+  };
+
+  const handleDuplicateRequest = (collectionId: string, requestId: string) => {
+    let duplicatedReq: RequestItem | null = null;
+
+    const findAndDuplicate = (nodes: any[]): any[] => {
+      const result: any[] = [];
+      for (const node of nodes) {
+        result.push(node);
+        if (node.id === requestId && node.type === 'request' && node.request) {
+          const clonedReq: RequestItem = {
+            ...JSON.parse(JSON.stringify(node.request)),
+            id: 'req_' + Math.random().toString(36).substring(2, 9),
+            name: `${node.name} (Copy)`,
+          };
+          duplicatedReq = clonedReq;
+          result.push({
+            id: clonedReq.id,
+            name: clonedReq.name,
+            type: 'request',
+            request: clonedReq,
+          });
+        } else if (node.children) {
+          result[result.length - 1] = {
+            ...node,
+            children: findAndDuplicate(node.children),
+          };
+        }
+      }
+      return result;
+    };
+
+    setCollections((prev) =>
+      prev.map((col) => {
+        if (col.id !== collectionId) return col;
+        return { ...col, items: findAndDuplicate(col.items) };
+      })
+    );
+
+    if (duplicatedReq) {
+      setActiveRequestId((duplicatedReq as RequestItem).id);
+      setActiveRequest(duplicatedReq);
+    }
   };
 
   const handleDeleteNode = (collectionId: string, nodeId: string) => {
@@ -460,10 +588,13 @@ export function App() {
   const handleClearAllStorage = async () => {
     try {
       await AsyncStorage.clear();
-      setCollections([]);
-      setEnvironments([]);
+      setCollections([DEFAULT_TESTING_COLLECTION]);
+      setEnvironments(DEFAULT_TEST_ENVIRONMENTS);
       setHistory([]);
-      setActiveEnvId(null);
+      setActiveEnvId('env_httpbin');
+      setActiveRequestId(defaultReq.id);
+      setActiveRequest(defaultReq);
+      setActiveResponse(null);
     } catch (e) {
       console.error('Clear storage error:', e);
     }
@@ -472,266 +603,152 @@ export function App() {
   return (
     <ThemeProvider theme={melsTheme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
-        {/* Top Bar with Settings, Import, Export */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden', bgcolor: '#0c0f17' }}>
+        {/* Sleek Top Navigation Bar with Logo, Import, Export, Settings */}
         <TitleBar
           onExport={handleExportCollection}
           onImport={handleImportCollection}
           onClearAllStorage={handleClearAllStorage}
         />
 
-        {/* Tab Bar Strip */}
-        <Box
-          sx={{
-            height: 36,
-            bgcolor: '#0a0c11',
-            borderBottom: 1,
-            borderColor: 'divider',
-            display: 'flex',
-            alignItems: 'center',
-            px: 1,
-            gap: 0.5,
-            overflowX: 'auto',
-          }}
-        >
-          {tabs.map((tab) => {
-            const method = tab.request.method;
-            const isActive = tab.id === activeTabId;
-            const mStyle = METHOD_COLORS[method] || { bg: '#252a3a', color: '#fff' };
-
-            return (
-              <Box
-                key={tab.id}
-                onClick={() => handleSelectTab(tab.id)}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1,
-                  px: 1.25,
-                  py: 0.4,
-                  fontSize: 12,
-                  bgcolor: isActive ? 'background.paper' : '#11131c',
-                  border: 1,
-                  borderColor: isActive ? 'primary.dark' : 'divider',
-                  borderRadius: 1,
-                  color: isActive ? 'text.primary' : 'text.secondary',
-                  cursor: 'pointer',
-                  maxWidth: 200,
-                  transition: 'all 0.15s ease',
-                  '&:hover': { bgcolor: 'background.paper', color: 'text.primary' },
-                }}
-              >
-                <Chip
-                  label={method}
-                  size="small"
-                  sx={{
-                    height: 16,
-                    fontSize: 9,
-                    fontWeight: 700,
-                    fontFamily: 'monospace',
-                    bgcolor: mStyle.bg,
-                    color: mStyle.color,
-                  }}
-                />
-                <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {tab.title || tab.request.name || 'Untitled'}
-                </Box>
-                {tabs.length > 1 && (
-                  <Box
-                    component="span"
-                    onClick={(e) => handleCloseTab(tab.id, e)}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      opacity: 0.6,
-                      '&:hover': { opacity: 1 },
-                    }}
-                  >
-                    <X size={12} />
-                  </Box>
-                )}
-              </Box>
-            );
-          })}
-          <Tooltip title="New Request Tab">
-            <IconButton size="small" onClick={() => handleNewTab()}>
-              <Plus size={14} />
-            </IconButton>
-          </Tooltip>
-        </Box>
-
-        {/* Main Workspace */}
+        {/* Main 3-Column Workspace */}
         <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          {/* Activity Bar */}
-          <Box
-            sx={{
-              width: 44,
-              bgcolor: '#0a0c11',
-              borderRight: 1,
-              borderColor: 'divider',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              py: 1,
-              gap: 1,
-              zIndex: 10,
+          {/* Left Sidebar (COLLECTIONS, Environments, History) */}
+          <Sidebar
+            width={sidebarWidth}
+            collections={collections}
+            activeRequestId={activeRequestId}
+            onSelectRequest={handleSelectCollectionRequest}
+            onAddRequestToCollection={handleAddRequestToCollection}
+            onAddFolder={handleAddFolder}
+            onDeleteNode={handleDeleteNode}
+            onRenameNode={handleRenameNode}
+            onDuplicateRequest={handleDuplicateRequest}
+            onAddCollection={handleAddCollection}
+            onDeleteCollection={handleDeleteCollection}
+            onRenameCollection={handleRenameCollection}
+            environments={environments}
+            onUpdateEnvironments={setEnvironments}
+            activeEnvId={activeEnvId}
+            onSelectEnv={setActiveEnvId}
+            history={history}
+            onSelectHistoryItem={(item) => {
+              setActiveRequestId(item.request.id);
+              setActiveRequest(item.request);
             }}
-          >
-            <Tooltip title="Collections" placement="right">
-              <IconButton
-                size="small"
-                color={sidebarOpen && activityTab === 'collections' ? 'primary' : 'default'}
-                onClick={() => {
-                  if (sidebarOpen && activityTab === 'collections') setSidebarOpen(false);
-                  else { setSidebarOpen(true); setActivityTab('collections'); }
-                }}
-                sx={{
-                  bgcolor: sidebarOpen && activityTab === 'collections' ? 'background.paper' : 'transparent',
-                }}
-              >
-                <Boxes size={16} />
-              </IconButton>
-            </Tooltip>
+            onClearHistory={() => setHistory([])}
+            activeNavTab={activityTab}
+            onNavTabChange={setActivityTab}
+          />
 
-            <Tooltip title="Environments" placement="right">
-              <IconButton
-                size="small"
-                color={sidebarOpen && activityTab === 'envs' ? 'primary' : 'default'}
-                onClick={() => {
-                  if (sidebarOpen && activityTab === 'envs') setSidebarOpen(false);
-                  else { setSidebarOpen(true); setActivityTab('envs'); }
-                }}
-                sx={{
-                  bgcolor: sidebarOpen && activityTab === 'envs' ? 'background.paper' : 'transparent',
-                }}
-              >
-                <Settings size={16} />
-              </IconButton>
-            </Tooltip>
+          {/* Sidebar Draggable Splitter */}
+          <Box
+            onMouseDown={handleSidebarMouseDown}
+            sx={{
+              width: 4,
+              cursor: 'col-resize',
+              bgcolor: 'transparent',
+              position: 'relative',
+              zIndex: 20,
+              flexShrink: 0,
+              transition: 'background-color 0.15s ease',
+              '&:hover, &:active': {
+                bgcolor: '#20c997',
+              },
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: 1,
+                width: 1,
+                bgcolor: '#1c2230',
+              },
+            }}
+          />
 
-            <Tooltip title="History" placement="right">
-              <IconButton
-                size="small"
-                color={sidebarOpen && activityTab === 'history' ? 'primary' : 'default'}
-                onClick={() => {
-                  if (sidebarOpen && activityTab === 'history') setSidebarOpen(false);
-                  else { setSidebarOpen(true); setActivityTab('history'); }
-                }}
-                sx={{
-                  bgcolor: sidebarOpen && activityTab === 'history' ? 'background.paper' : 'transparent',
-                }}
-              >
-                <Clock size={16} />
-              </IconButton>
-            </Tooltip>
-          </Box>
-
-          {/* Sidebar */}
-          {sidebarOpen && (
-            <>
-              <Sidebar
-                width={sidebarWidth}
-                collections={collections}
-                onSelectRequest={handleSelectCollectionRequest}
-                onAddRequestToCollection={handleAddRequestToCollection}
-                onAddFolder={handleAddFolder}
-                onDeleteNode={handleDeleteNode}
-                onAddCollection={handleAddCollection}
-                onDeleteCollection={handleDeleteCollection}
-                onRenameCollection={handleRenameCollection}
-                environments={environments}
-                onUpdateEnvironments={setEnvironments}
-                activeEnvId={activeEnvId}
-                onSelectEnv={setActiveEnvId}
-                history={history}
-                onSelectHistoryItem={(item) => handleNewTab(item.request)}
-                onClearHistory={() => setHistory([])}
-                activeNavTab={activityTab}
-              />
-              {/* Sidebar Draggable Splitter */}
-              <Box
-                onMouseDown={handleSidebarMouseDown}
-                sx={{
-                  width: 5,
-                  cursor: 'col-resize',
-                  bgcolor: 'transparent',
-                  position: 'relative',
-                  zIndex: 20,
-                  flexShrink: 0,
-                  transition: 'background-color 0.15s ease',
-                  '&:hover, &:active': {
-                    bgcolor: 'primary.main',
-                  },
-                  '&::after': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    bottom: 0,
-                    left: 2,
-                    width: 1,
-                    bgcolor: 'divider',
-                  },
-                }}
-              />
-            </>
-          )}
-
-          {/* Content Area */}
+          {/* Center Column: Top Request Editor & Bottom Response Viewer */}
           <ErrorBoundary fallbackTitle="An error occurred in the workspace">
-            <Box ref={contentAreaRef} sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-              <Box sx={{ width: `${editorPercent}%`, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <Box
+              ref={centerColumnRef}
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: 1,
+                height: '100%',
+                overflow: 'hidden',
+                bgcolor: '#0c0f17',
+              }}
+            >
+              {/* Top: Request Editor */}
+              <Box
+                sx={{
+                  height: `${topPercent}%`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
                 <RequestEditor
-                  request={activeTab.request}
+                  request={activeRequest}
                   onChange={handleUpdateRequest}
                   onSend={handleSendRequest}
                   onCancel={handleCancelRequest}
-                  isLoading={activeTab.isLoading}
+                  isLoading={isLoading}
                 />
               </Box>
 
-              {/* Editor / Response Draggable Splitter */}
+              {/* Horizontal Resizable Splitter */}
               <Box
-                onMouseDown={handleSplitterMouseDown}
+                onMouseDown={handleVerticalSplitterMouseDown}
                 sx={{
-                  width: 5,
-                  cursor: 'col-resize',
+                  height: 4,
+                  cursor: 'row-resize',
                   bgcolor: 'transparent',
                   position: 'relative',
                   zIndex: 20,
                   flexShrink: 0,
                   transition: 'background-color 0.15s ease',
                   '&:hover, &:active': {
-                    bgcolor: 'primary.main',
+                    bgcolor: '#20c997',
                   },
                   '&::after': {
                     content: '""',
                     position: 'absolute',
-                    top: 0,
-                    bottom: 0,
-                    left: 2,
-                    width: 1,
-                    bgcolor: 'divider',
+                    left: 0,
+                    right: 0,
+                    top: 1,
+                    height: 1,
+                    bgcolor: '#1c2230',
                   },
                 }}
               />
 
-              <Box sx={{ width: `${100 - editorPercent}%`, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              {/* Bottom: Response Viewer */}
+              <Box
+                sx={{
+                  height: `${100 - topPercent}%`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
                 <ResponseViewer
-                  response={activeTab.response}
-                  isLoading={activeTab.isLoading}
-                  requestUrl={activeTab.request.url}
+                  response={activeResponse}
+                  isLoading={isLoading}
+                  requestUrl={activeRequest.url}
                 />
               </Box>
             </Box>
           </ErrorBoundary>
-        </Box>
 
-        {/* Status Bar */}
-        <StatusBar
-          environment={activeEnvironment}
-          response={activeTab.response}
-          isLoading={activeTab.isLoading}
-        />
+          {/* Right Column: Network Timing Panel */}
+          <NetworkTimingPanel
+            timing={activeResponse?.timing}
+            totalTimeMs={activeResponse?.timeMs}
+            isLoading={isLoading}
+          />
+        </Box>
       </Box>
     </ThemeProvider>
   );

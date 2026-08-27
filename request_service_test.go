@@ -403,3 +403,40 @@ func TestRequestService_Cancellation(t *testing.T) {
 		t.Errorf("expected request to be canceled, got error: %s", res.Error)
 	}
 }
+
+func TestRequestService_MelsExpectAndScripting(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"charge","status":"succeeded","amount":4200,"livemode":false}`))
+	}))
+	defer server.Close()
+
+	svc := NewRequestService()
+	script := `
+		mels.test("charge succeeds", () => {
+			mels.expect(res.status).toBe(200);
+			mels.expect(res.json.status).toBe("succeeded");
+			mels.expect(res.json.amount).toBe(4200);
+			mels.expect(res.json.livemode).toBeFalsy();
+		});
+	`
+
+	res := svc.ExecuteRequest(ApiRequest{
+		ID:         "req-script-mels",
+		Method:     "POST",
+		URL:        server.URL,
+		TestScript: script,
+	})
+
+	if res.Error != "" {
+		t.Fatalf("unexpected error: %s", res.Error)
+	}
+	if len(res.TestResults) != 1 {
+		t.Fatalf("expected 1 test result, got %d", len(res.TestResults))
+	}
+	if !res.TestResults[0].Passed {
+		t.Errorf("expected test to pass, got error: %s", res.TestResults[0].Error)
+	}
+}
+

@@ -4,19 +4,19 @@ export const melsTheme = createTheme({
   palette: {
     mode: 'dark',
     background: {
-      default: '#0c0e14',
-      paper: '#131620',
+      default: '#0c0f17',
+      paper: '#11141c',
     },
     primary: {
-      main: '#6366f1',
-      light: '#818cf8',
-      dark: '#4f46e5',
-      contrastText: '#ffffff',
+      main: '#20c997',
+      light: '#3dd68c',
+      dark: '#0fa573',
+      contrastText: '#000000',
     },
     secondary: {
-      main: '#06b6d4',
-      light: '#22d3ee',
-      dark: '#0891b2',
+      main: '#38bdf8',
+      light: '#7dd3fc',
+      dark: '#0284c7',
     },
     success: {
       main: '#10b981',
@@ -34,11 +34,11 @@ export const melsTheme = createTheme({
       dark: '#dc2626',
     },
     text: {
-      primary: '#f8fafc',
+      primary: '#f1f5f9',
       secondary: '#94a3b8',
       disabled: '#475569',
     },
-    divider: '#1e2230',
+    divider: '#1c2230',
   },
   typography: {
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
@@ -55,20 +55,20 @@ export const melsTheme = createTheme({
     MuiCssBaseline: {
       styleOverrides: {
         body: {
-          backgroundColor: '#0c0e14',
-          color: '#f8fafc',
+          backgroundColor: '#0c0f17',
+          color: '#f1f5f9',
           userSelect: 'none',
-          scrollbarColor: '#282d3e transparent',
+          scrollbarColor: '#232938 transparent',
           '&::-webkit-scrollbar': {
             width: 6,
             height: 6,
           },
           '&::-webkit-scrollbar-thumb': {
-            backgroundColor: '#282d3e',
+            backgroundColor: '#232938',
             borderRadius: 4,
           },
           '&::-webkit-scrollbar-thumb:hover': {
-            backgroundColor: '#394057',
+            backgroundColor: '#333b50',
           },
         },
       },
@@ -103,7 +103,7 @@ export const melsTheme = createTheme({
           minHeight: 36,
         },
         indicator: {
-          backgroundColor: '#6366f1',
+          backgroundColor: '#20c997',
           height: 2,
         },
       },
@@ -112,13 +112,13 @@ export const melsTheme = createTheme({
       styleOverrides: {
         root: {
           minHeight: 36,
-          padding: '6px 12px',
+          padding: '6px 14px',
           textTransform: 'none',
           fontWeight: 500,
           fontSize: 12,
           color: '#94a3b8',
           '&.Mui-selected': {
-            color: '#f8fafc',
+            color: '#f1f5f9',
             fontWeight: 600,
           },
         },
@@ -127,7 +127,7 @@ export const melsTheme = createTheme({
     MuiTableCell: {
       styleOverrides: {
         root: {
-          borderBottom: '1px solid #1e2230',
+          borderBottom: '1px solid #1c2230',
           padding: '6px 8px',
           fontSize: 12,
         },
@@ -143,17 +143,17 @@ export const melsTheme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          backgroundColor: '#11131c',
+          backgroundColor: '#0f121a',
           borderRadius: 6,
           fontSize: 12,
           '& .MuiOutlinedInput-notchedOutline': {
-            borderColor: '#1e2230',
+            borderColor: '#1c2230',
           },
           '&:hover .MuiOutlinedInput-notchedOutline': {
-            borderColor: '#353b52',
+            borderColor: '#2e384d',
           },
           '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-            borderColor: '#6366f1',
+            borderColor: '#20c997',
           },
         },
         input: {

@@ -233,6 +233,7 @@ export namespace main {
 	    serverTimeMs: number;
 	    downloadTimeMs: number;
 	    totalDurationMs: number;
+	    connReused: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RequestTiming(source);
@@ -246,6 +247,7 @@ export namespace main {
 	        this.serverTimeMs = source["serverTimeMs"];
 	        this.downloadTimeMs = source["downloadTimeMs"];
 	        this.totalDurationMs = source["totalDurationMs"];
+	        this.connReused = source["connReused"];
 	    }
 	}
 	export class ResponseCookie {

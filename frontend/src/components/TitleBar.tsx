@@ -7,7 +7,6 @@ import {
   Menu,
   MenuItem,
   ListItemIcon,
-  ListItemText,
   Divider,
   Dialog,
   DialogTitle,
@@ -21,8 +20,6 @@ import {
   Download,
   Trash2,
   Info,
-  FolderOpen,
-  CheckCircle2,
 } from 'lucide-react';
 import logoImg from '../assets/logo.png';
 
@@ -52,10 +49,10 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   return (
     <Box
       sx={{
-        height: 36,
-        bgcolor: 'background.paper',
+        height: 38,
+        bgcolor: '#0c0f17',
         borderBottom: 1,
-        borderColor: 'divider',
+        borderColor: '#1c2230',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -64,7 +61,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         zIndex: 100,
       }}
     >
-      {/* Left: Brand & Menu Items */}
+      {/* Left: Brand & Quick Actions */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <img src={logoImg} alt="Mels Logo" style={{ width: 18, height: 18, borderRadius: 4 }} />
@@ -73,7 +70,6 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           </Typography>
         </Box>
 
-        {/* Quick Top Bar Actions */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Button
             size="small"
@@ -81,11 +77,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onClick={onImport}
             sx={{
               fontSize: 11,
-              color: 'text.secondary',
+              color: '#94a3b8',
               py: 0.2,
               px: 1,
               height: 24,
-              '&:hover': { color: 'text.primary', bgcolor: '#161924' },
+              textTransform: 'none',
+              borderRadius: '6px',
+              '&:hover': { color: '#f1f5f9', bgcolor: '#161924' },
             }}
           >
             Import
@@ -97,11 +95,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onClick={onExport}
             sx={{
               fontSize: 11,
-              color: 'text.secondary',
+              color: '#94a3b8',
               py: 0.2,
               px: 1,
               height: 24,
-              '&:hover': { color: 'text.primary', bgcolor: '#161924' },
+              textTransform: 'none',
+              borderRadius: '6px',
+              '&:hover': { color: '#f1f5f9', bgcolor: '#161924' },
             }}
           >
             Export
@@ -109,11 +109,20 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         </Box>
       </Box>
 
-      {/* Right: Settings Menu */}
+      {/* Right: Settings gear menu */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Tooltip title="Settings & Management">
-          <IconButton size="small" onClick={handleOpenSettings} sx={{ width: 28, height: 28 }}>
-            <Settings size={14} />
+          <IconButton
+            size="small"
+            onClick={handleOpenSettings}
+            sx={{
+              width: 28,
+              height: 28,
+              color: '#64748b',
+              '&:hover': { color: '#f1f5f9', bgcolor: 'rgba(255,255,255,0.06)' },
+            }}
+          >
+            <Settings size={15} />
           </IconButton>
         </Tooltip>
 
@@ -124,12 +133,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           slotProps={{
             paper: {
               sx: {
-                bgcolor: '#131620',
+                bgcolor: '#11141c',
                 border: 1,
-                borderColor: 'divider',
+                borderColor: '#1c2230',
                 minWidth: 200,
                 borderRadius: 1.5,
                 mt: 0.5,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
               },
             },
           }}
@@ -143,7 +153,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             }}
             sx={{ fontSize: 12, py: 1 }}
           >
-            <ListItemIcon>
+            <ListItemIcon sx={{ color: '#94a3b8' }}>
               <Upload size={14} />
             </ListItemIcon>
             <Typography variant="body2" sx={{ fontSize: 12 }}>Import Collection</Typography>
@@ -156,13 +166,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             }}
             sx={{ fontSize: 12, py: 1 }}
           >
-            <ListItemIcon>
+            <ListItemIcon sx={{ color: '#94a3b8' }}>
               <Download size={14} />
             </ListItemIcon>
             <Typography variant="body2" sx={{ fontSize: 12 }}>Export Collection</Typography>
           </MenuItem>
 
-          <Divider sx={{ my: 0.5 }} />
+          <Divider sx={{ my: 0.5, borderColor: '#1c2230' }} />
 
           {onClearAllStorage && (
             <MenuItem
@@ -170,16 +180,16 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 handleCloseSettings();
                 onClearAllStorage();
               }}
-              sx={{ fontSize: 12, py: 1, color: 'error.light' }}
+              sx={{ fontSize: 12, py: 1, color: '#ef4444' }}
             >
-              <ListItemIcon sx={{ color: 'error.light' }}>
+              <ListItemIcon sx={{ color: '#ef4444' }}>
                 <Trash2 size={14} />
               </ListItemIcon>
-              <Typography variant="body2" sx={{ fontSize: 12, color: 'error.light' }}>Clear All Data</Typography>
+              <Typography variant="body2" sx={{ fontSize: 12, color: '#ef4444' }}>Clear All Data</Typography>
             </MenuItem>
           )}
 
-          <Divider sx={{ my: 0.5 }} />
+          <Divider sx={{ my: 0.5, borderColor: '#1c2230' }} />
 
           <MenuItem
             onClick={() => {
@@ -188,7 +198,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             }}
             sx={{ fontSize: 12, py: 1 }}
           >
-            <ListItemIcon>
+            <ListItemIcon sx={{ color: '#94a3b8' }}>
               <Info size={14} />
             </ListItemIcon>
             <Typography variant="body2" sx={{ fontSize: 12 }}>About Mels</Typography>
@@ -204,23 +214,23 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         fullWidth
         slotProps={{
           paper: {
-            sx: { bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 2 },
+            sx: { bgcolor: '#11141c', border: 1, borderColor: '#1c2230', borderRadius: 2 },
           },
         }}
       >
-        <DialogTitle sx={{ fontSize: 14, fontWeight: 700, pb: 1 }}>
+        <DialogTitle sx={{ fontSize: 14, fontWeight: 700, pb: 1, color: '#f8fafc' }}>
           About Mels API Client
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" sx={{ fontSize: 12, color: 'text.secondary', mb: 1 }}>
+          <Typography variant="body2" sx={{ fontSize: 12, color: '#94a3b8', mb: 1 }}>
             <strong>Mels</strong> is a fast, local-first API client built for complete data ownership and privacy. All your requests, collections, and tokens stay securely on your machine.
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block' }}>
+          <Typography variant="caption" sx={{ color: '#64748b', display: 'block' }}>
             Version 1.0.0 &bull; Local Storage &bull; Zero Telemetry
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button size="small" variant="contained" onClick={() => setAboutDialogOpen(false)}>
+          <Button size="small" variant="contained" onClick={() => setAboutDialogOpen(false)} sx={{ textTransform: 'none' }}>
             Close
           </Button>
         </DialogActions>

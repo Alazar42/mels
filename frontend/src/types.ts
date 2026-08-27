@@ -75,6 +75,7 @@ export interface TimingBreakdown {
   serverTimeMs: number;
   downloadTimeMs: number;
   totalDurationMs: number;
+  connReused?: boolean;
 }
 
 export interface CookieItem {

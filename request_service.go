@@ -377,6 +377,7 @@ func (s *RequestService) ExecuteRequest(req ApiRequest) ApiResponse {
 	var connStart, connDone time.Time
 	var tlsStart, tlsDone time.Time
 	var gotFirstByte time.Time
+	var connReused bool
 
 	trace := &httptrace.ClientTrace{
 		DNSStart: func(_ httptrace.DNSStartInfo) {
@@ -396,6 +397,9 @@ func (s *RequestService) ExecuteRequest(req ApiRequest) ApiResponse {
 		},
 		TLSHandshakeDone: func(_ tls.ConnectionState, _ error) {
 			tlsDone = time.Now()
+		},
+		GotConn: func(info httptrace.GotConnInfo) {
+			connReused = info.Reused
 		},
 		GotFirstResponseByte: func() {
 			gotFirstByte = time.Now()
@@ -524,6 +528,7 @@ func (s *RequestService) ExecuteRequest(req ApiRequest) ApiResponse {
 	res.TimeMs = totalDone.Sub(httpStartTime).Milliseconds()
 	timing := RequestTiming{
 		TotalDurationMs: res.TimeMs,
+		ConnReused:      connReused,
 	}
 	if !dnsStart.IsZero() && !dnsDone.IsZero() {
 		timing.DNSLookupMs = dnsDone.Sub(dnsStart).Milliseconds()
