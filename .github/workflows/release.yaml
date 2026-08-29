@@ -92,13 +92,13 @@ jobs:
       - name: Rename artifact
         shell: pwsh
         run: |
-          Move-Item build/bin/*.exe build/bin/mels_${{github.ref_name}}.exe
+          Move-Item build/bin/*.exe build/bin/mels_win_${{github.ref_name}}.exe
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: mels-windows
-          path: build/bin/mels_${{github.ref_name}}.exe
+          path: build/bin/mels_win_${{github.ref_name}}.exe
 
   release:
     name: Create Github Release
@@ -125,5 +125,5 @@ jobs:
         with:
           files: |
             release/mels-linux_${{github.ref_name}}
-            release/mels_${{github.ref_name}}.exe
+            release/mels_win_${{github.ref_name}}.exe
           generate_release_notes: false

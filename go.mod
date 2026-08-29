@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
-	github.com/wailsapp/wails/v2 v2.12.0
+	github.com/wailsapp/wails/v2 v2.15.0
 	golang.org/x/net v0.56.0
 )
 
